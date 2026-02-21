@@ -156,15 +156,18 @@ needs rigorous schema migration support in v2.0.
 
 ## 11. What to Avoid
 
-Based on lessons learned from comparable Python game projects:
+Based on lessons learned from comparable Python game projects and anti-patterns
+highlighted by [generalistprogrammer.com](https://generalistprogrammer.com/game-design-patterns):
 
-| Library | Reason to avoid |
+| Library / Approach | Reason to avoid |
 |---|---|
 | `pygame` (original, not CE) | Unmaintained; Python 3.12 compatibility issues |
 | `tkinter` for game rendering | Not designed for game loops; poor performance above 30 FPS |
 | `kivy` | Cross-platform mobile focus; heavier than needed for a desktop game |
 | `PIL` / `Pillow` for rendering | Image manipulation only, not a game engine |
 | `asyncio` in the main game loop (phase 1) | Unnecessary complexity; pygame's synchronous event loop is sufficient for single-player |
+| `pickle` for save games | Deserialising malicious pickle data executes arbitrary code – an explicit Python security risk documented in the official docs |
+| Global Singletons for domain objects | Creates hidden coupling; makes unit testing impossible; use dependency injection instead |
 
 ---
 

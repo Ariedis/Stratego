@@ -1,10 +1,11 @@
 # Stratego – System Design
 
 **Document type:** System Design  
-**Version:** 1.0  
+**Version:** 1.1  
 **Author:** Software Architect (Python Game Specialist)  
 **Status:** Approved  
-**Depends on:** [`architecture_overview.md`](./architecture_overview.md)
+**Depends on:** [`architecture_overview.md`](./architecture_overview.md)  
+**Changelog:** v1.1 – Added `game_loop.py` module; added Section 3 (Game Loop design); updated event catalogue
 
 ---
 
@@ -36,6 +37,7 @@ flows.
 
 | Module | Responsibility |
 |---|---|
+| `game_loop.py` | Main application loop; drives `process_input → update → render` at 60 FPS; owns the pygame clock |
 | `game_controller.py` | Top-level orchestrator; routes commands to domain |
 | `event_bus.py` | Publish/subscribe hub; decouples domain from UI and AI |
 | `commands.py` | Immutable command value objects (`PlacePiece`, `MovePiece`) |
@@ -73,7 +75,57 @@ flows.
 
 ---
 
-## 3. Component Interaction – Game Turn Flow
+## 3. Game Loop Design
+
+The Game Loop is the central clock of the application. As described in
+*Game Programming Patterns* (Nystrom) and highlighted by
+[generalistprogrammer.com](https://generalistprogrammer.com/game-design-patterns),
+the loop must:
+
+- Keep the game running at a **consistent pace** independent of hardware speed.
+- Clearly **separate** input processing, state updates, and rendering.
+- Ensure the AI thinking budget is **bounded** within a single frame's
+  allocated time (using the `time_limit_ms` config key).
+
+### 3.1 Loop Phases
+
+```mermaid
+graph LR
+    A["process_input()"] --> B["update()"] --> C["render()"] --> D["clock.tick(60)"] --> A
+```
+
+| Phase | Responsibility | Key modules called |
+|---|---|---|
+| `process_input()` | Reads OS events from pygame queue; translates to abstract `InputEvent` objects; enqueues `Commands` | `InputHandler`, `GameController` |
+| `update()` | Dequeues and applies pending `Commands` via `GameController`; advances animations by one frame; checks for a completed AI `Future` and submits the resulting move if it is the AI's turn | `GameController`, `TurnManager`, `AIOrchestrator`, `AnimationManager` |
+| `render()` | Redraws all dirty screen regions from the current `GameState`; draws UI chrome | `pygame_renderer.py`, `screens/` |
+| `clock.tick(60)` | Caps the loop to 60 FPS; returns elapsed milliseconds since last frame (`delta_time`) | `pygame.Clock` |
+
+### 3.2 Turn-Based vs. Real-Time Considerations
+
+Because Stratego is turn-based, the `update()` phase is lightweight on most
+frames (no move is pending). The loop's idle-frame cost is dominated by
+rendering. The fixed 60 FPS cap ensures:
+
+- Animations (piece movement, combat flash) remain smooth.
+- The AI, when thinking, can be called asynchronously using Python's
+  `concurrent.futures.ThreadPoolExecutor` with a `time_limit_ms` guard,
+  preventing the loop from blocking while the AI searches. The AI result is
+  picked up in the next `update()` call after the future completes.
+
+### 3.3 Why Fixed-Rate over Event-Driven
+
+A purely event-driven architecture (only process when an event arrives) was
+considered and rejected because:
+
+1. Animation ticking requires a consistent frame clock.
+2. AI time-budgeting is simpler with a predictable frame cadence.
+3. pygame's architecture is fundamentally built around a main loop; fighting
+   it would add complexity without benefit.
+
+---
+
+## 4. Component Interaction – Game Turn Flow
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +155,7 @@ sequenceDiagram
 
 ---
 
-## 4. Component Interaction – AI Turn Flow
+## 5. Component Interaction – AI Turn Flow
 
 ```mermaid
 sequenceDiagram
@@ -128,7 +180,7 @@ sequenceDiagram
 
 ---
 
-## 5. Game Phase State Machine
+## 6. Game Phase State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -154,7 +206,7 @@ stateDiagram-v2
 
 ---
 
-## 6. Event Catalogue
+## 7. Event Catalogue
 
 The Event Bus carries the following domain events. All events are immutable
 value objects (Python `dataclass` with `frozen=True`).
@@ -172,7 +224,7 @@ value objects (Python `dataclass` with `frozen=True`).
 
 ---
 
-## 7. Configuration Schema
+## 8. Configuration Schema
 
 Settings are loaded from `config.yaml` at application start. All values have
 sensible defaults defined in code so the file is optional.
@@ -205,7 +257,7 @@ logging:
 
 ---
 
-## 8. Error Handling Strategy
+## 9. Error Handling Strategy
 
 | Error category | Strategy |
 |---|---|
@@ -217,7 +269,7 @@ logging:
 
 ---
 
-## 9. Multiplayer Architecture (v2.0 Preview)
+## 10. Multiplayer Architecture (v2.0 Preview)
 
 Phase 2 will add optional online multiplayer via WebSocket. The domain layer
 requires **zero changes** – only a new `NetworkAdapter` in the infrastructure
@@ -237,7 +289,7 @@ never trusting client-side state.
 
 ---
 
-## 10. Related Documents
+## 11. Related Documents
 
 | Document | Purpose |
 |---|---|

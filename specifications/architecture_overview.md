@@ -1,9 +1,10 @@
 # Stratego – High-Level Architecture Overview
 
 **Document type:** Architecture Overview  
-**Version:** 1.0  
+**Version:** 1.1  
 **Author:** Software Architect (Python Game Specialist)  
-**Status:** Approved
+**Status:** Approved  
+**Changelog:** v1.1 – Added Game Loop pattern, Object Pool consideration, anti-patterns section; corrected layer diagram (removed erroneous pickle reference); added industry references from generalistprogrammer.com
 
 ---
 
@@ -87,15 +88,70 @@ adds real-time animations or particle effects.
 > the MVC pattern recommended here, keeping its `Board` and `Move` objects
 > entirely free of rendering concerns.
 
-### 3.2 Supporting Patterns
+### 3.2 Game Loop Pattern
 
-| Pattern | Where applied | Benefit |
+The **Game Loop** is the backbone of the Stratego runtime. As documented by
+[generalistprogrammer.com](https://generalistprogrammer.com/game-design-patterns)
+and Robert Nystrom's *Game Programming Patterns*, every interactive game
+requires a loop that:
+
+1. **Processes input** – reads player/network events and queues them.
+2. **Updates state** – applies queued commands; ticks the turn manager and
+   any animations.
+3. **Renders** – draws the current game state to screen.
+
+For Stratego the loop is **fixed-timestep** at 60 FPS. Because the game is
+turn-based, the `update()` phase is lightweight on most frames (no move is
+pending); the loop's main cost per idle frame is rendering.
+
+```
+while game_running:
+    process_input()   ← InputHandler gathers OS events; enqueues Commands
+    update()          ← GameController applies pending Commands; fires Events
+    render()          ← Renderer redraws changed board regions
+    clock.tick(FPS)   ← cap to 60 FPS
+```
+
+**Why a fixed loop rather than event-driven?** A fixed loop simplifies
+animation timing, ensures AI thinking time is bounded within a predictable
+frame budget, and aligns with pygame's standard architecture. Pure
+event-driven designs (no active loop) struggle with smooth animation.
+
+### 3.3 Supporting Patterns
+
+| Pattern | Where applied | Benefit | Source |
+|---|---|---|---|
+| **State Machine** | Game flow (Setup → Playing → Game Over) | Prevents illegal transitions | *Game Programming Patterns* ch. State |
+| **Command** | Player moves, undo/redo support | Reversible actions, testability | *Game Programming Patterns* ch. Command |
+| **Observer / Event Bus** | UI reacting to model changes | Loose coupling | generalistprogrammer.com |
+| **Strategy** | AI difficulty levels | Swappable algorithms | GoF |
+| **Repository** | Save / load game state | Decouples persistence format | DDD |
+| **Game Loop** | Main application runtime | Consistent input → update → render | generalistprogrammer.com |
+| **Object Pool** | UI animations, particle effects (v2.0) | Avoids GC pauses during combat animations | *Game Programming Patterns* ch. Object Pool |
+
+> **Object Pool note (v1.0):** Stratego v1.0 has no real-time particle
+> effects, so object pooling is low priority. It should be introduced in v2.0
+> if combat animations spawn many short-lived sprites. Pre-allocating a pool
+> of 50–100 sprite objects will eliminate garbage collection pauses that
+> would cause frame drops during combat resolution.
+
+---
+
+## 3a. Anti-Patterns to Avoid
+
+The following patterns are commonly misused in game development and must be
+actively avoided in this project. These are highlighted by
+[generalistprogrammer.com](https://generalistprogrammer.com/game-design-patterns)
+and the game-development community as leading causes of unmaintainable
+codebases.
+
+| Anti-pattern | Description | How we avoid it |
 |---|---|---|
-| **State Machine** | Game flow (Setup → Playing → Game Over) | Prevents illegal transitions |
-| **Command** | Player moves, undo/redo support | Reversible actions, testability |
-| **Observer / Event Bus** | UI reacting to model changes | Loose coupling |
-| **Strategy** | AI difficulty levels | Swappable algorithms |
-| **Repository** | Save / load game state | Decouples persistence format |
+| **God Object** | A single class that knows and does too much (e.g., a `Game` class that manages rules, rendering, AI, and persistence) | Strict layer architecture: each module has a single, narrow responsibility |
+| **Spaghetti Code** | Over-complex, unstructured logic; tightly coupled systems that are impossible to test or extend independently | Enforce zero cross-layer imports; domain layer has no UI or I/O dependencies |
+| **Singleton Overuse** | Using a single global instance for too many services, creating hidden dependencies and making unit testing impossible | No Singletons in the domain layer; dependency injection used instead. The Event Bus is the only application-layer shared service |
+| **Deep Inheritance Hierarchies** | Modelling piece behaviours through many levels of subclassing (e.g., `Piece → MovablePiece → AttackingPiece → Scout`) | Composition over inheritance: use `dataclass` fields and `Rank` enum; special behaviour encoded in `combat.py` and `rules_engine.py`, not subclass overrides |
+| **Tight Coupling to pygame** | Game logic directly calling pygame functions, making the domain layer untestable without a display | All pygame calls are confined to the Presentation Layer; domain layer uses only abstract data structures |
 
 ---
 
@@ -129,7 +185,7 @@ graph TB
     end
 
     subgraph Infrastructure Layer
-        PERSIST["Save/Load (JSON / pickle)"]
+        PERSIST["Save/Load (JSON)"]
         NETW["Network Adapter (WebSocket)"]
         CONFIG["Config / Settings"]
     end
@@ -178,10 +234,10 @@ Full ADRs are in [`adr/`](./adr/).
 | # | Decision | Rationale |
 |---|---|---|
 | ADR-001 | Python 3.12 | Latest stable; `match` statements simplify combat resolution; `dataclasses` + type hints improve model clarity |
-| ADR-002 | pygame for primary renderer | Mature, well-documented, extensive community; comparable games (py-chess-gui, open-source clones) use it successfully |
-| ADR-003 | MVC + Event Bus over ECS | Turn-based game with small entity count; MVC is simpler, more testable |
-| ADR-004 | JSON for save games | Human-readable, debuggable, no external dependencies; protobuf considered but excessive for local play |
-| ADR-005 | Minimax + alpha-beta for AI | Proven for two-player zero-sum perfect-information games; Stratego's hidden-information handled via determinised MCTS in phase 2 |
+| ADR-002 | MVC + Event Bus over ECS | Turn-based game with small entity count; MVC is simpler, more testable; ECS adds complexity without performance benefit |
+| ADR-003 | Immutable `GameState` snapshots | AI search safety; free undo/redo; simple persistence; precedent from python-chess |
+| ADR-004 | JSON for save games | Human-readable, debuggable, no external dependencies; `pickle` explicitly rejected – code-execution security risk |
+| ADR-005 | Minimax + alpha-beta for AI | Proven for two-player zero-sum games; Stratego's hidden-information handled via determinised MCTS in phase 2 |
 
 ---
 
@@ -243,3 +299,15 @@ stratego/
 | [`data_models.md`](./data_models.md) | Domain model definitions and relationships |
 | [`technology_stack.md`](./technology_stack.md) | Library choices and justifications |
 | [`ai_strategy.md`](./ai_strategy.md) | AI algorithm selection and design |
+
+---
+
+## 10. Key Sources and Industry References
+
+| Source | Relevance |
+|---|---|
+| [generalistprogrammer.com – Game Design Patterns](https://generalistprogrammer.com/game-design-patterns) | Game Loop, Component, ECS, Observer, Object Pool, Singleton anti-pattern; scalable architecture principles |
+| Robert Nystrom – *Game Programming Patterns* (gameprogrammingpatterns.com) | Canonical reference for Command, State, Game Loop, Update Method, Object Pool, Singleton (with cautions) |
+| python-chess (GitHub) | Production Python game library demonstrating model-first, renderer-agnostic MVC design |
+| *Master of the Flag* – Stankiewicz et al. (2011) | Computer Stratego Championship winner; basis for ISMCTS AI recommendation |
+| *Opponent Modelling in Stratego* – de Boer et al. (2007) | Piece value weights and probability-tracking approach for hidden-information Stratego AI |
