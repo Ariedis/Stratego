@@ -18,7 +18,6 @@ from src.domain.rules_engine import (
     RulesViolationError,
     ValidationResult,
     check_win_condition,
-    generate_moves,
     validate_move,
 )
 
