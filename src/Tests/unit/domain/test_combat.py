@@ -13,7 +13,6 @@ from src.domain.combat import resolve_combat
 from src.domain.enums import CombatOutcome, PlayerSide, Rank
 from src.domain.piece import Piece, Position
 
-
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
 # ---------------------------------------------------------------------------

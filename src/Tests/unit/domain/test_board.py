@@ -11,9 +11,8 @@ import pytest
 
 from src.domain.board import Board
 from src.domain.enums import PlayerSide, Rank, TerrainType
-from src.domain.piece import Piece, Position
+from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import make_blue_piece, make_red_piece
-
 
 # ---------------------------------------------------------------------------
 # US-201 AC-1: Exactly 8 lake squares at the correct positions
@@ -260,3 +259,63 @@ class TestBoardIsEmpty:
     def test_out_of_bounds_position_is_not_empty(self, empty_board: Board) -> None:
         """An off-board position is not considered empty."""
         assert empty_board.is_empty(Position(-1, 0)) is False
+
+
+# ---------------------------------------------------------------------------
+# Board.move_piece() — TASK-201 step 9
+# ---------------------------------------------------------------------------
+
+
+class TestBoardMovePiece:
+    """Board.move_piece() returns a new board with the piece relocated."""
+
+    def test_move_piece_relocates_piece(self, empty_board: Board) -> None:
+        """Moving a piece from (8,0) to (7,0) puts it at the new square."""
+        piece = make_red_piece(Rank.SCOUT, 8, 0)
+        board = empty_board.place_piece(piece)
+        new_board = board.move_piece(piece.position, Position(7, 0))
+        assert new_board.get_square(Position(7, 0)).piece is not None
+        assert new_board.get_square(Position(8, 0)).piece is None
+
+    def test_move_piece_sets_has_moved_true(self, empty_board: Board) -> None:
+        """Moved piece has has_moved=True in the new board."""
+        piece = make_red_piece(Rank.CAPTAIN, 8, 0)
+        board = empty_board.place_piece(piece)
+        new_board = board.move_piece(piece.position, Position(7, 0))
+        moved = new_board.get_square(Position(7, 0)).piece
+        assert moved is not None
+        assert moved.has_moved is True
+
+    def test_move_piece_updates_position(self, empty_board: Board) -> None:
+        """Moved piece's .position attribute reflects the new square."""
+        piece = make_red_piece(Rank.MAJOR, 8, 5)
+        board = empty_board.place_piece(piece)
+        new_board = board.move_piece(piece.position, Position(7, 5))
+        moved = new_board.get_square(Position(7, 5)).piece
+        assert moved is not None
+        assert moved.position == Position(7, 5)
+
+    def test_move_piece_returns_new_board(self, empty_board: Board) -> None:
+        """move_piece() returns a new Board object (original unchanged)."""
+        piece = make_red_piece(Rank.SCOUT, 8, 0)
+        board = empty_board.place_piece(piece)
+        new_board = board.move_piece(piece.position, Position(7, 0))
+        assert new_board is not board
+        assert board.get_square(Position(8, 0)).piece is not None
+
+    def test_move_piece_no_piece_raises(self, empty_board: Board) -> None:
+        """move_piece() raises ValueError if the source square is empty."""
+        with pytest.raises(ValueError):
+            empty_board.move_piece(Position(8, 0), Position(7, 0))
+
+    def test_move_piece_invalid_from_pos_raises(self, empty_board: Board) -> None:
+        """move_piece() raises ValueError for an out-of-bounds source position."""
+        with pytest.raises(ValueError):
+            empty_board.move_piece(Position(-1, 0), Position(0, 0))
+
+    def test_move_piece_invalid_to_pos_raises(self, empty_board: Board) -> None:
+        """move_piece() raises ValueError for an out-of-bounds destination position."""
+        piece = make_red_piece(Rank.SCOUT, 8, 0)
+        board = empty_board.place_piece(piece)
+        with pytest.raises(ValueError):
+            board.move_piece(piece.position, Position(-1, 0))

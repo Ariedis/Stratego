@@ -54,7 +54,7 @@ class Board:
     # ------------------------------------------------------------------
 
     @classmethod
-    def create_empty(cls) -> "Board":
+    def create_empty(cls) -> Board:
         """Return a fresh board with all lake squares pre-populated and no pieces."""
         squares: dict[tuple[int, int], Square] = {}
         for row in range(BOARD_ROWS):
@@ -105,7 +105,7 @@ class Board:
         low, high = _SETUP_ZONES[side]
         return low <= pos.row <= high
 
-    def place_piece(self, piece: Piece) -> "Board":
+    def place_piece(self, piece: Piece) -> Board:
         """Return a new Board with *piece* placed at *piece.position*.
 
         Raises ValueError if the target square is a lake or already occupied.
@@ -123,7 +123,7 @@ class Board:
         new_squares[(pos.row, pos.col)] = new_square
         return Board(squares=new_squares)
 
-    def remove_piece(self, pos: Position) -> "Board":
+    def remove_piece(self, pos: Position) -> Board:
         """Return a new Board with the piece at *pos* removed."""
         sq = self.squares.get((pos.row, pos.col))
         if sq is None:
@@ -131,4 +131,32 @@ class Board:
         new_square = Square(position=sq.position, terrain=sq.terrain, piece=None)
         new_squares = dict(self.squares)
         new_squares[(pos.row, pos.col)] = new_square
+        return Board(squares=new_squares)
+
+    def move_piece(self, from_pos: Position, to_pos: Position) -> Board:
+        """Return a new Board with the piece moved from *from_pos* to *to_pos*.
+
+        Raises ValueError if *from_pos* has no piece, or if *to_pos* is outside
+        the board. The caller is responsible for validating legality before calling
+        this method.
+        """
+        from_sq = self.squares.get((from_pos.row, from_pos.col))
+        if from_sq is None:
+            raise ValueError(f"Position {from_pos} is outside the board.")
+        if from_sq.piece is None:
+            raise ValueError(f"No piece at {from_pos} to move.")
+        to_sq = self.squares.get((to_pos.row, to_pos.col))
+        if to_sq is None:
+            raise ValueError(f"Position {to_pos} is outside the board.")
+
+        from dataclasses import replace as dc_replace
+
+        moved_piece = dc_replace(from_sq.piece, position=to_pos, has_moved=True)
+        new_squares = dict(self.squares)
+        new_squares[(from_pos.row, from_pos.col)] = Square(
+            position=from_sq.position, terrain=from_sq.terrain, piece=None
+        )
+        new_squares[(to_pos.row, to_pos.col)] = Square(
+            position=to_sq.position, terrain=to_sq.terrain, piece=moved_piece
+        )
         return Board(squares=new_squares)

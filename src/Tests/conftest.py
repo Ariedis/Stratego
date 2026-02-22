@@ -8,14 +8,10 @@ from __future__ import annotations
 import pytest
 
 from src.domain.board import Board
-from src.domain.enums import GamePhase, PlayerSide, Rank
 from src.domain.game_state import GameState
 from src.Tests.fixtures.sample_game_states import (
     make_empty_setup_state,
     make_minimal_playing_state,
-    make_piece,
-    make_red_piece,
-    make_blue_piece,
 )
 
 

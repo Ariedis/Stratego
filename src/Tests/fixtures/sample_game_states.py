@@ -16,7 +16,6 @@ from src.domain.game_state import GameState
 from src.domain.piece import Piece, Position
 from src.domain.player import Player
 
-
 # ---------------------------------------------------------------------------
 # Piece factory helpers
 # ---------------------------------------------------------------------------
