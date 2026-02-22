@@ -7,12 +7,11 @@ Specification: system_design.md §2.4
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.domain.enums import PlayerSide, Rank
-from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import (
     make_blue_piece,
     make_minimal_playing_state,
@@ -165,7 +164,9 @@ class TestLakeTexture:
         renderer.render(minimal_state, PlayerSide.RED)
         # At least 8 blit calls should involve the lake surface
         lake_surface = mock_sprite_manager.lake_surface
-        lake_blit_calls = [c for c in mock_screen.blit.call_args_list if c.args and c.args[0] is lake_surface]
+        lake_blit_calls = [
+            c for c in mock_screen.blit.call_args_list if c.args and c.args[0] is lake_surface
+        ]
         assert len(lake_blit_calls) >= 8
 
     def test_all_100_squares_are_rendered(

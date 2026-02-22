@@ -57,4 +57,4 @@ select = ["E", "F", "S", "I", "UP"]
 ignore = ["S101"]  # allow assert in tests
 
 [tool.ruff.lint.per-file-ignores]
-"src/Tests/**/*.py" = ["S101", "S105", "S106"]
+"src/Tests/**/*.py" = ["S101", "S105", "S106", "S108", "S110"]

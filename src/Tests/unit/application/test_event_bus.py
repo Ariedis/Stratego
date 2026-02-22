@@ -263,8 +263,9 @@ class TestAllEightEventTypesDefined:
     )
     def test_event_is_frozen_dataclass(self, event_class: str, kwargs: object) -> None:
         """Each event must be instantiable and immutable (frozen dataclass)."""
-        import src.application.events as ev_module
         from dataclasses import FrozenInstanceError
+
+        import src.application.events as ev_module
 
         cls = getattr(ev_module, event_class)
         instance = cls(**kwargs())  # type: ignore[operator]

@@ -11,12 +11,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.domain.enums import PlayerSide, Rank
+from src.domain.enums import PlayerSide
 from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import (
-    make_blue_piece,
     make_minimal_playing_state,
-    make_red_piece,
 )
 
 # ---------------------------------------------------------------------------
@@ -153,7 +151,11 @@ class TestRightClickReturnsRightClickEvent:
         self, handler: object, playing_state: object
     ) -> None:
         """Right-click position does not matter — always RightClickEvent."""
-        for pos in [(0, 0), (BOARD_WIDTH // 2, WINDOW_HEIGHT // 2), (WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1)]:
+        for pos in [
+            (0, 0),
+            (BOARD_WIDTH // 2, WINDOW_HEIGHT // 2),
+            (WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1),
+        ]:
             event = make_pygame_event(MOUSEBUTTONDOWN, button=3, pos=pos)
             result = handler.process(event, playing_state, PlayerSide.RED)  # type: ignore[union-attr]
             assert isinstance(result, RightClickEvent)
