@@ -15,11 +15,9 @@ from src.domain.game_state import GameState
 from src.domain.piece import Piece, Position
 from src.domain.player import Player
 from src.Tests.fixtures.sample_game_states import (
-    make_blue_piece,
     make_empty_setup_state,
     make_red_piece,
 )
-
 
 # ---------------------------------------------------------------------------
 # US-103 AC-1: Position validity
@@ -68,7 +66,7 @@ class TestPositionValidity:
 
 
 class TestPieceImmutability:
-    """AC-2: Pieces are frozen=True dataclasses; direct attribute mutation raises FrozenInstanceError."""
+    """AC-2: Pieces are frozen=True dataclasses; mutation raises FrozenInstanceError."""
 
     def test_piece_is_immutable(self) -> None:
         """Attempting piece.revealed = True must raise FrozenInstanceError."""

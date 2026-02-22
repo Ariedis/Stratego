@@ -27,6 +27,8 @@ from src.domain.rules_engine import (
     MAX_TURNS,
     RulesViolationError,
     ValidationResult,
+    apply_move,
+    apply_placement,
     check_win_condition,
     is_setup_complete,
     validate_move,
@@ -34,12 +36,9 @@ from src.domain.rules_engine import (
 )
 from src.Tests.fixtures.sample_game_states import (
     make_blue_piece,
-    make_combat_state,
     make_minimal_playing_state,
-    make_piece,
     make_red_piece,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -623,10 +622,191 @@ def _build_40_pieces(side: PlayerSide) -> list[Piece]:
     for rank, count in inventory:
         for _ in range(count):
             pieces.append(
-                Piece(rank=rank, owner=side, revealed=False, has_moved=False, position=Position(row, col))
+                Piece(
+                    rank=rank, owner=side, revealed=False,
+                    has_moved=False, position=Position(row, col),
+                )
             )
             col += 1
             if col >= 10:
                 col = 0
                 row += 1
     return pieces
+
+
+# ---------------------------------------------------------------------------
+# apply_placement() — TASK-202 step 6
+# ---------------------------------------------------------------------------
+
+
+class TestApplyPlacement:
+    """apply_placement() correctly places a piece and updates state."""
+
+    def test_places_piece_on_board(self, empty_setup_state: GameState) -> None:
+        """apply_placement() adds the piece to the board at the given position."""
+        piece = make_red_piece(Rank.SCOUT, 9, 0)
+        pos = piece.position
+        new_state = apply_placement(empty_setup_state, piece, pos)
+        sq = new_state.board.get_square(pos)
+        assert sq.piece is not None
+        assert sq.piece.rank == Rank.SCOUT
+
+    def test_updates_player_pieces_remaining(self, empty_setup_state: GameState) -> None:
+        """apply_placement() adds piece to the placing player's pieces_remaining."""
+        piece = make_red_piece(Rank.FLAG, 9, 9)
+        pos = piece.position
+        new_state = apply_placement(empty_setup_state, piece, pos)
+        red = next(p for p in new_state.players if p.side == PlayerSide.RED)
+        assert any(p.rank == Rank.FLAG for p in red.pieces_remaining)
+
+    def test_raises_for_invalid_placement(self, empty_setup_state: GameState) -> None:
+        """apply_placement() raises RulesViolationError for a Blue-zone placement by RED."""
+        piece = make_red_piece(Rank.SCOUT, 0, 0)
+        with pytest.raises(RulesViolationError):
+            apply_placement(empty_setup_state, piece, piece.position)
+
+    def test_raises_for_lake_placement(self, empty_setup_state: GameState) -> None:
+        """apply_placement() raises RulesViolationError when target is a lake square."""
+        piece = make_red_piece(Rank.MINER, 4, 2)
+        with pytest.raises(RulesViolationError):
+            apply_placement(empty_setup_state, piece, piece.position)
+
+    def test_updates_flag_position(self, empty_setup_state: GameState) -> None:
+        """apply_placement() sets flag_position on the player when a FLAG is placed."""
+        piece = make_red_piece(Rank.FLAG, 9, 5)
+        pos = piece.position
+        new_state = apply_placement(empty_setup_state, piece, pos)
+        red = next(p for p in new_state.players if p.side == PlayerSide.RED)
+        assert red.flag_position == pos
+
+
+# ---------------------------------------------------------------------------
+# apply_move() — TASK-203 step 2, TASK-206 step 1–3
+# ---------------------------------------------------------------------------
+
+
+class TestApplyMove:
+    """apply_move() executes a legal move and returns the updated GameState."""
+
+    def test_simple_move_updates_board(self) -> None:
+        """A normal move relocates the piece on the board."""
+        scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        move = Move(piece=scout, from_pos=scout.position, to_pos=Position(7, 0))
+        new_state = apply_move(state, move)
+        assert new_state.board.get_square(Position(7, 0)).piece is not None
+        assert new_state.board.get_square(Position(8, 0)).piece is None
+
+    def test_simple_move_advances_turn(self) -> None:
+        """apply_move() increments turn_number by 1."""
+        scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        move = Move(piece=scout, from_pos=scout.position, to_pos=Position(7, 0))
+        new_state = apply_move(state, move)
+        assert new_state.turn_number == state.turn_number + 1
+
+    def test_simple_move_alternates_active_player(self) -> None:
+        """apply_move() switches active_player from RED to BLUE."""
+        scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        move = Move(piece=scout, from_pos=scout.position, to_pos=Position(7, 0))
+        new_state = apply_move(state, move)
+        assert new_state.active_player == PlayerSide.BLUE
+
+    def test_simple_move_appends_to_history(self) -> None:
+        """apply_move() adds one MoveRecord to move_history."""
+        scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        move = Move(piece=scout, from_pos=scout.position, to_pos=Position(7, 0))
+        new_state = apply_move(state, move)
+        assert len(new_state.move_history) == 1
+
+    def test_attack_attacker_wins_removes_defender(self) -> None:
+        """When attacker wins (Marshal vs Scout), defender is removed from board."""
+        marshal = make_red_piece(Rank.MARSHAL, 8, 0)
+        blue_scout = make_blue_piece(Rank.SCOUT, 7, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[marshal, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[blue_scout, make_blue_piece(Rank.FLAG, 0, 9)],
+        )
+        move = Move(
+            piece=marshal, from_pos=marshal.position,
+            to_pos=blue_scout.position, move_type=MoveType.ATTACK,
+        )
+        new_state = apply_move(state, move)
+        sq = new_state.board.get_square(blue_scout.position)
+        assert sq.piece is not None
+        assert sq.piece.owner == PlayerSide.RED
+
+    def test_attack_defender_wins_removes_attacker(self) -> None:
+        """When defender wins (Scout vs Marshal), attacker is removed."""
+        blue_marshal = make_blue_piece(Rank.MARSHAL, 7, 0)
+        red_scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[red_scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[blue_marshal, make_blue_piece(Rank.FLAG, 0, 9)],
+        )
+        move = Move(
+            piece=red_scout, from_pos=red_scout.position,
+            to_pos=blue_marshal.position, move_type=MoveType.ATTACK,
+        )
+        new_state = apply_move(state, move)
+        assert new_state.board.get_square(red_scout.position).piece is None
+        defender_sq = new_state.board.get_square(blue_marshal.position)
+        assert defender_sq.piece is not None
+        assert defender_sq.piece.owner == PlayerSide.BLUE
+
+    def test_attack_draw_removes_both(self) -> None:
+        """When equal ranks fight (Scout vs Scout), both are removed."""
+        red_scout = make_red_piece(Rank.SCOUT, 8, 0)
+        blue_scout = make_blue_piece(Rank.SCOUT, 7, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[red_scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[blue_scout, make_blue_piece(Rank.FLAG, 0, 9)],
+        )
+        move = Move(
+            piece=red_scout, from_pos=red_scout.position,
+            to_pos=blue_scout.position, move_type=MoveType.ATTACK,
+        )
+        new_state = apply_move(state, move)
+        assert new_state.board.get_square(red_scout.position).piece is None
+        assert new_state.board.get_square(blue_scout.position).piece is None
+
+    def test_apply_move_raises_for_invalid_move(self) -> None:
+        """apply_move() raises RulesViolationError for a diagonal (invalid) move."""
+        scout = make_red_piece(Rank.SCOUT, 8, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[scout, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        diagonal_move = Move(piece=scout, from_pos=scout.position, to_pos=Position(7, 1))
+        with pytest.raises(RulesViolationError):
+            apply_move(state, diagonal_move)
+
+    def test_flag_capture_triggers_game_over(self) -> None:
+        """Capturing the opponent's Flag sets phase=GAME_OVER."""
+        red_marshal = make_red_piece(Rank.MARSHAL, 1, 0)
+        blue_flag = make_blue_piece(Rank.FLAG, 0, 0)
+        state = _make_state_with_pieces(
+            red_pieces=[red_marshal, make_red_piece(Rank.FLAG, 9, 9)],
+            blue_pieces=[blue_flag],
+        )
+        move = Move(
+            piece=red_marshal, from_pos=red_marshal.position,
+            to_pos=blue_flag.position, move_type=MoveType.ATTACK,
+        )
+        new_state = apply_move(state, move)
+        assert new_state.phase == GamePhase.GAME_OVER
+        assert new_state.winner == PlayerSide.RED
