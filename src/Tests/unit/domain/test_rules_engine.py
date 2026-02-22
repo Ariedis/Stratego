@@ -185,6 +185,79 @@ class TestNormalPieceMovement:
         )
         assert validate_move(state_with_history, move) == ValidationResult.INVALID
 
+    def test_move_to_off_board_position_invalid(self) -> None:
+        """Moving to a position outside the board returns INVALID."""
+        sergeant = make_red_piece(Rank.SERGEANT, 0, 0)
+        state = _make_state_with_pieces(
+            [sergeant, make_red_piece(Rank.FLAG, 9, 9)],
+            [make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        move = Move(piece=sergeant, from_pos=Position(0, 0), to_pos=Position(-1, 0))
+        assert validate_move(state, move) == ValidationResult.INVALID
+
+    def test_two_square_rule_triggers_via_repeated_move_pattern(self) -> None:
+        """Two-square rule fires when history shows B→A then A→B and current move is A→B again."""
+        captain = make_red_piece(Rank.CAPTAIN, 7, 5)
+        state = _make_state_with_pieces(
+            [captain, make_red_piece(Rank.FLAG, 9, 9)],
+            [make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        # History: second_last (7,6)→(7,5), last (7,5)→(7,6).
+        # Proposed move: (7,5)→(7,6) — same as last entry → two-square rule triggers.
+        history: tuple[MoveRecord, ...] = (
+            MoveRecord(
+                turn_number=1,
+                from_pos=(7, 6),
+                to_pos=(7, 5),
+                move_type=MoveType.MOVE.value,
+            ),
+            MoveRecord(
+                turn_number=2,
+                from_pos=(7, 5),
+                to_pos=(7, 6),
+                move_type=MoveType.MOVE.value,
+            ),
+        )
+        state_with_history = replace(state, move_history=history)
+        # Captain is at (7,5); (7,6) is empty; propose (7,5)→(7,6) again.
+        move = Move(
+            piece=captain,
+            from_pos=Position(7, 5),
+            to_pos=Position(7, 6),
+        )
+        assert validate_move(state_with_history, move) == ValidationResult.INVALID
+
+    def test_two_square_rule_no_violation_with_different_destination(self) -> None:
+        """Two-square rule does not fire when the move destination differs from the pattern."""
+        captain = make_red_piece(Rank.CAPTAIN, 7, 5)
+        state = _make_state_with_pieces(
+            [captain, make_red_piece(Rank.FLAG, 9, 9)],
+            [make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.SCOUT, 1, 0)],
+        )
+        # History has 2 entries, but the current move is in a new direction — no violation.
+        history: tuple[MoveRecord, ...] = (
+            MoveRecord(
+                turn_number=1,
+                from_pos=(7, 6),
+                to_pos=(7, 5),
+                move_type=MoveType.MOVE.value,
+            ),
+            MoveRecord(
+                turn_number=2,
+                from_pos=(7, 5),
+                to_pos=(7, 6),
+                move_type=MoveType.MOVE.value,
+            ),
+        )
+        state_with_history = replace(state, move_history=history)
+        # Move in a completely different direction — not a repeat of the pattern.
+        move = Move(
+            piece=captain,
+            from_pos=Position(7, 5),
+            to_pos=Position(8, 5),
+        )
+        assert validate_move(state_with_history, move) == ValidationResult.OK
+
 
 # ---------------------------------------------------------------------------
 # US-203: Scout movement validation
@@ -266,6 +339,16 @@ class TestScoutMovement:
             [make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.MINER, 1, 0)],
         )
         move = Move(piece=scout, from_pos=Position(3, 2), to_pos=Position(6, 2))
+        assert validate_move(state, move) == ValidationResult.INVALID
+
+    def test_scout_stay_in_place_invalid(self) -> None:
+        """Scout attempting to stay in place (from_pos == to_pos) is invalid."""
+        scout = make_red_piece(Rank.SCOUT, 5, 5)
+        state = _make_state_with_pieces(
+            [scout, make_red_piece(Rank.FLAG, 9, 9)],
+            [make_blue_piece(Rank.FLAG, 0, 9), make_blue_piece(Rank.MINER, 1, 0)],
+        )
+        move = Move(piece=scout, from_pos=Position(5, 5), to_pos=Position(5, 5))
         assert validate_move(state, move) == ValidationResult.INVALID
 
     @pytest.mark.parametrize(
