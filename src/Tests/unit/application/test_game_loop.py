@@ -7,7 +7,7 @@ Specification: system_design.md §3
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -157,7 +157,9 @@ class TestLoopPhaseOrder:
 
         # All three phases must appear, and render must come after update.
         assert "render" in call_log
-        assert call_log.index("render") > call_log.index("update") if "update" in call_log else True
+        assert (
+            call_log.index("render") > call_log.index("update") if "update" in call_log else True
+        )
 
     def test_screen_manager_handle_event_called_per_frame(
         self, game_loop: object, mock_screen_manager: MagicMock

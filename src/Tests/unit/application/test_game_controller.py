@@ -7,7 +7,7 @@ Specification: system_design.md §4
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -93,14 +93,18 @@ def controller(playing_state, mock_event_bus):  # type: ignore[return]
 class TestValidMove:
     """AC-1: Valid move updates state and publishes PieceMoved."""
 
-    def test_valid_move_updates_current_state(self, controller: object, mock_event_bus: MagicMock) -> None:
+    def test_valid_move_updates_current_state(
+        self, controller: object, mock_event_bus: MagicMock
+    ) -> None:
         """After a valid move the controller's current_state reflects the new turn."""
         initial_turn = controller.current_state.turn_number  # type: ignore[union-attr]
         cmd = MovePiece(from_pos=Position(8, 0), to_pos=Position(7, 0))
         controller.submit_command(cmd)  # type: ignore[union-attr]
         assert controller.current_state.turn_number == initial_turn + 1  # type: ignore[union-attr]
 
-    def test_valid_move_publishes_piece_moved_event(self, controller: object, mock_event_bus: MagicMock) -> None:
+    def test_valid_move_publishes_piece_moved_event(
+        self, controller: object, mock_event_bus: MagicMock
+    ) -> None:
         """After a valid move, PieceMoved is published exactly once."""
         cmd = MovePiece(from_pos=Position(8, 0), to_pos=Position(7, 0))
         controller.submit_command(cmd)  # type: ignore[union-attr]
@@ -263,7 +267,9 @@ class TestFlagCapture:
         )
         assert game_over_event.winner == PlayerSide.RED
 
-    def test_game_state_phase_is_game_over_after_flag_capture(self, mock_event_bus: MagicMock) -> None:
+    def test_game_state_phase_is_game_over_after_flag_capture(
+        self, mock_event_bus: MagicMock
+    ) -> None:
         """After flag capture, current_state.phase is GAME_OVER."""
         red_scout = make_red_piece(Rank.SCOUT, 1, 0)
         blue_flag = make_blue_piece(Rank.FLAG, 0, 0)
@@ -292,11 +298,11 @@ class TestPlacePieceCommand:
 
     def test_valid_placement_publishes_piece_placed_event(self, mock_event_bus: MagicMock) -> None:
         """A valid PlacePiece command publishes PiecePlaced."""
-        from src.domain.enums import GamePhase
+        from src.domain import rules_engine
         from src.domain.board import Board
+        from src.domain.enums import GamePhase
         from src.domain.game_state import GameState
         from src.domain.player import Player
-        from src.domain import rules_engine
 
         board = Board.create_empty()
         red_player = Player(

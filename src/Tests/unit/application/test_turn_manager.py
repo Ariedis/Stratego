@@ -17,7 +17,6 @@ from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import (
     make_blue_piece,
     make_minimal_playing_state,
-    make_red_piece,
 )
 
 # ---------------------------------------------------------------------------
@@ -174,8 +173,8 @@ class TestCollectAiResult:
         self, mock_event_bus: MagicMock, mock_ai_orchestrator: MagicMock
     ) -> None:
         """When the AI Future is complete, collect_ai_result submits the move."""
-        from src.domain.move import Move
         from src.domain.enums import MoveType
+        from src.domain.move import Move
 
         ai_state = make_ai_player_state(PlayerSide.BLUE)
         mock_ctrl = MagicMock()
@@ -201,7 +200,10 @@ class TestCollectAiResult:
         mock_ctrl.submit_command.assert_called_once()
 
     def test_collect_ai_result_no_op_when_no_future(
-        self, mock_game_controller: MagicMock, mock_event_bus: MagicMock, mock_ai_orchestrator: MagicMock
+        self,
+        mock_game_controller: MagicMock,
+        mock_event_bus: MagicMock,
+        mock_ai_orchestrator: MagicMock,
     ) -> None:
         """collect_ai_result is a no-op when no AI Future is pending."""
         tm = TurnManager(
@@ -244,9 +246,8 @@ class TestAIRetryOnIllegalMove:
     ) -> None:
         """When the controller always rejects the AI move, request_move is called
         at most 3 additional times (initial + 2 retries = 3 total)."""
-        from src.domain.move import Move
         from src.domain.enums import MoveType
-        from src.application.commands import MovePiece
+        from src.domain.move import Move
 
         ai_state = make_ai_player_state(PlayerSide.BLUE)
         mock_ctrl = MagicMock()
@@ -262,7 +263,6 @@ class TestAIRetryOnIllegalMove:
         )
 
         # Provide a completed future that always returns the same illegal move
-        from src.domain.piece import Piece
         scout = make_blue_piece(Rank.SCOUT, 1, 0)
         ai_move = Move(
             piece=scout,
@@ -282,9 +282,8 @@ class TestAIRetryOnIllegalMove:
         self, mock_event_bus: MagicMock, mock_ai_orchestrator: MagicMock
     ) -> None:
         """After 3 consecutive illegal AI moves a CRITICAL log message is emitted."""
-        import logging
-        from src.domain.move import Move
         from src.domain.enums import MoveType
+        from src.domain.move import Move
         from src.domain.rules_engine import RulesViolationError
 
         ai_state = make_ai_player_state(PlayerSide.BLUE)

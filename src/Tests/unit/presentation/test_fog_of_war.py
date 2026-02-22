@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.domain.enums import PlayerSide, Rank
-from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import (
     make_blue_piece,
     make_minimal_playing_state,
@@ -109,7 +108,8 @@ class TestUnrevealedOpponentPiecesAreHidden:
         calls = mock_sprite_manager.get_surface.call_args_list
         hidden_calls = [
             c for c in calls
-            if c.kwargs.get("revealed") is False or (c.args and len(c.args) >= 3 and c.args[2] is False)
+            if c.kwargs.get("revealed") is False
+            or (c.args and len(c.args) >= 3 and c.args[2] is False)
         ]
         assert len(hidden_calls) >= 1
 
@@ -130,7 +130,8 @@ class TestUnrevealedOpponentPiecesAreHidden:
         calls = mock_sprite_manager.get_surface.call_args_list
         hidden_calls = [
             c for c in calls
-            if c.kwargs.get("revealed") is False or (c.args and len(c.args) >= 3 and c.args[2] is False)
+            if c.kwargs.get("revealed") is False
+            or (c.args and len(c.args) >= 3 and c.args[2] is False)
         ]
         assert len(hidden_calls) >= 1
 
@@ -160,7 +161,8 @@ class TestRevealedOpponentPiecesShowRank:
         calls = mock_sprite_manager.get_surface.call_args_list
         rank_calls = [
             c for c in calls
-            if c.kwargs.get("revealed") is True or (c.args and len(c.args) >= 3 and c.args[2] is True)
+            if c.kwargs.get("revealed") is True
+            or (c.args and len(c.args) >= 3 and c.args[2] is True)
         ]
         assert len(rank_calls) >= 1
 
@@ -246,7 +248,11 @@ class TestBluePerspectiveFogOfWar:
 class TestTerminalRendererFogOfWar:
     """Fog-of-war in the terminal renderer (headless path)."""
 
-    @pytest.mark.xfail(TerminalRenderer is None, reason="TerminalRenderer not implemented yet", strict=False)
+    @pytest.mark.xfail(
+        TerminalRenderer is None,
+        reason="TerminalRenderer not implemented yet",
+        strict=False,
+    )
     def test_terminal_renderer_hides_unrevealed_opponent(self) -> None:
         """TerminalRenderer hides unrevealed opponent pieces with [?]."""
         import io
@@ -264,7 +270,11 @@ class TestTerminalRendererFogOfWar:
         output = buf.getvalue()
         assert "[?]" in output
 
-    @pytest.mark.xfail(TerminalRenderer is None, reason="TerminalRenderer not implemented yet", strict=False)
+    @pytest.mark.xfail(
+        TerminalRenderer is None,
+        reason="TerminalRenderer not implemented yet",
+        strict=False,
+    )
     def test_terminal_renderer_shows_own_pieces_always(self) -> None:
         """TerminalRenderer shows own (Red) pieces regardless of revealed=False."""
         import io

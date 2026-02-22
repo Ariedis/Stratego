@@ -13,7 +13,6 @@ from contextlib import redirect_stdout
 import pytest
 
 from src.domain.enums import PlayerSide, Rank
-from src.domain.piece import Position
 from src.Tests.fixtures.sample_game_states import (
     make_blue_piece,
     make_minimal_playing_state,
