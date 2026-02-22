@@ -20,7 +20,7 @@ from src.application.events import (
     PiecePlaced,
     TurnChanged,
 )
-from src.domain.enums import CombatOutcome, GamePhase, MoveType
+from src.domain.enums import CombatOutcome, GamePhase, MoveType, Rank
 from src.domain.game_state import GameState
 from src.domain.move import Move
 from src.domain.piece import Piece
@@ -128,7 +128,7 @@ class GameController:
         if from_sq.piece is None:
             dummy_move = Move(
                 piece=Piece(
-                    rank=__import__("src.domain.enums", fromlist=["Rank"]).Rank.SCOUT,
+                    rank=Rank.SCOUT,
                     owner=self._state.active_player,
                     revealed=False,
                     has_moved=False,
