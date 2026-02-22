@@ -9,10 +9,24 @@ Planning documents are organised as follows:
 
 ```
 planning/
-├── README.md               ← this file
-├── backlog/                ← prioritised backlog and epics
-├── user-stories/           ← individual user story files
-└── sprints/                ← sprint plans and iteration goals
+├── README.md                                     ← this file
+├── implementation-plan.md                        ← master phased roadmap
+├── epics.md                                      ← full epic catalogue
+├── product-backlog.md                            ← prioritised backlog
+├── user-stories-epic-1-foundation.md             ← EPIC-1 user stories
+├── user-stories-epic-2-domain-layer.md           ← EPIC-2 user stories
+├── user-stories-epic-3-application-layer.md      ← EPIC-3 user stories
+├── user-stories-epic-4-presentation-layer.md     ← EPIC-4 user stories
+├── user-stories-epic-5-ai-layer.md               ← EPIC-5 user stories
+├── user-stories-epic-6-infrastructure.md         ← EPIC-6 user stories
+├── user-stories-epic-7-custom-armies.md          ← EPIC-7 user stories
+├── sprint-phase-1-foundation.md                  ← sprint plan – Phase 1
+├── sprint-phase-2-core-game-rules.md             ← sprint plan – Phase 2
+├── sprint-phase-3-application-layer.md           ← sprint plan – Phase 3
+├── sprint-phase-4-presentation-layer.md          ← sprint plan – Phase 4
+├── sprint-phase-5-ai-layer.md                    ← sprint plan – Phase 5
+├── sprint-phase-6-infrastructure.md              ← sprint plan – Phase 6
+└── sprint-phase-7-custom-armies-and-polish.md    ← sprint plan – Phase 7
 ```
 
 ## Conventions
