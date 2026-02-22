@@ -222,3 +222,41 @@ class TestBoardPiecePlacement:
         """A freshly created board must have no pieces anywhere."""
         for (row, col), sq in empty_board.squares.items():
             assert sq.piece is None, f"Square ({row},{col}) unexpectedly has a piece"
+
+    def test_place_piece_outside_board_raises_value_error(self, empty_board: Board) -> None:
+        """Placing a piece at an off-board position raises ValueError."""
+        piece = make_red_piece(Rank.SCOUT, -1, 0)
+        with pytest.raises(ValueError):
+            empty_board.place_piece(piece)
+
+    def test_remove_piece_outside_board_raises_value_error(self, empty_board: Board) -> None:
+        """Removing a piece at an off-board position raises ValueError."""
+        with pytest.raises(ValueError):
+            empty_board.remove_piece(Position(-1, 0))
+
+
+# ---------------------------------------------------------------------------
+# Board.is_empty() — not a lake, not occupied
+# ---------------------------------------------------------------------------
+
+
+class TestBoardIsEmpty:
+    """Board.is_empty() returns True only for in-bounds, non-lake, unoccupied squares."""
+
+    def test_empty_normal_square_is_empty(self, empty_board: Board) -> None:
+        """A normal square with no piece is empty."""
+        assert empty_board.is_empty(Position(5, 5)) is True
+
+    def test_lake_square_is_not_empty(self, empty_board: Board) -> None:
+        """A lake square is never considered empty."""
+        assert empty_board.is_empty(Position(4, 2)) is False
+
+    def test_occupied_square_is_not_empty(self, empty_board: Board) -> None:
+        """A square with a piece on it is not empty."""
+        piece = make_red_piece(Rank.SCOUT, 8, 3)
+        board_with_piece = empty_board.place_piece(piece)
+        assert board_with_piece.is_empty(Position(8, 3)) is False
+
+    def test_out_of_bounds_position_is_not_empty(self, empty_board: Board) -> None:
+        """An off-board position is not considered empty."""
+        assert empty_board.is_empty(Position(-1, 0)) is False
