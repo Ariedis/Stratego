@@ -8,11 +8,12 @@ description: >
   the `src/Tests/` directory; never modifies source code or removes failing
   tests.
 tools:
-  - read_file
-  - create_file
-  - run_terminal_cmd
-  - search_files
-  - list_dir
+  - bash
+  - create
+  - view
+  - edit
+  - grep
+  - glob
 ---
 
 ## Persona
