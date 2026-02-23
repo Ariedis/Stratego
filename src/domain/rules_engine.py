@@ -396,3 +396,95 @@ def _rebuild_players(
         else:
             result.append(p)
     return (result[0], result[1])
+
+
+# ---------------------------------------------------------------------------
+# Move generation
+# ---------------------------------------------------------------------------
+
+
+def generate_moves(state: GameState, side: PlayerSide) -> list[Move]:
+    """Return all legal moves available to *side* in *state*.
+
+    Generates candidate moves for each moveable piece (skipping FLAGs and
+    BOMs), then filters through validate_move to ensure legality.
+    """
+    moves: list[Move] = []
+    board = state.board
+    player = _get_player(state, side)
+
+    for piece in player.pieces_remaining:
+        if piece.rank in _IMMOVABLE_RANKS:
+            continue
+        from_pos = piece.position
+
+        if piece.rank == Rank.SCOUT:
+            # Scouts can move any number of squares along a rank/file.
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                for step in range(1, 10):
+                    r = from_pos.row + dr * step
+                    c = from_pos.col + dc * step
+                    if not (0 <= r <= 9 and 0 <= c <= 9):
+                        break
+                    sq = board.squares.get((r, c))
+                    if sq is None:
+                        break
+                    if sq.terrain.name == "LAKE":
+                        break
+                    to_pos = Position(r, c)
+                    if sq.piece is not None:
+                        if sq.piece.owner != side:
+                            # Possible attack – still check two-square rule.
+                            candidate = Move(
+                                piece=piece,
+                                from_pos=from_pos,
+                                to_pos=to_pos,
+                                move_type=MoveType.ATTACK,
+                            )
+                            try:
+                                if validate_move(state, candidate) == ValidationResult.OK:
+                                    moves.append(candidate)
+                            except RulesViolationError:
+                                pass
+                        break  # Any piece (own or enemy) blocks further movement.
+                    else:
+                        candidate = Move(
+                            piece=piece,
+                            from_pos=from_pos,
+                            to_pos=to_pos,
+                            move_type=MoveType.MOVE,
+                        )
+                        try:
+                            if validate_move(state, candidate) == ValidationResult.OK:
+                                moves.append(candidate)
+                        except RulesViolationError:
+                            pass
+        else:
+            # Normal pieces move exactly one square orthogonally.
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                r = from_pos.row + dr
+                c = from_pos.col + dc
+                if not (0 <= r <= 9 and 0 <= c <= 9):
+                    continue
+                sq = board.squares.get((r, c))
+                if sq is None:
+                    continue
+                if sq.terrain.name == "LAKE":
+                    continue
+                if sq.piece is not None and sq.piece.owner == side:
+                    continue
+                to_pos = Position(r, c)
+                move_type = MoveType.ATTACK if sq.piece is not None else MoveType.MOVE
+                candidate = Move(
+                    piece=piece,
+                    from_pos=from_pos,
+                    to_pos=to_pos,
+                    move_type=move_type,
+                )
+                try:
+                    if validate_move(state, candidate) == ValidationResult.OK:
+                        moves.append(candidate)
+                except RulesViolationError:
+                    pass
+
+    return moves
