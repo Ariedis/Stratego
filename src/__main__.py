@@ -20,6 +20,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from src.domain.board import Board
 from src.domain.enums import GamePhase, PlayerSide, PlayerType, Rank
@@ -135,12 +136,12 @@ class _TurnManagerProxy:
 
     def __init__(self) -> None:
         """Initialise the proxy with no active turn manager."""
-        self.active: object | None = None
+        self.active: Any = None
 
     def collect_ai_result(self) -> None:
         """Delegate to the active ``TurnManager``, or no-op if absent."""
         if self.active is not None:
-            self.active.collect_ai_result()  # type: ignore[union-attr]
+            self.active.collect_ai_result()
 
 
 class _GameContext:
@@ -153,9 +154,9 @@ class _GameContext:
 
     def __init__(
         self,
-        initial_controller: object,
+        initial_controller: Any,
         turn_manager_proxy: _TurnManagerProxy,
-        renderer_adapter: object,
+        renderer_adapter: Any,
         asset_dir: Path,
     ) -> None:
         """Initialise the context with an existing controller.
@@ -170,22 +171,22 @@ class _GameContext:
             asset_dir: Path to the assets directory (used if the renderer
                 needs to be recreated — reserved for future use).
         """
-        self._controller = initial_controller
+        self._controller: Any = initial_controller
         self._turn_manager_proxy = turn_manager_proxy
-        self._renderer_adapter = renderer_adapter
+        self._renderer_adapter: Any = renderer_adapter
         self._asset_dir = asset_dir
 
     # Expose current_state so GameLoop can call self._controller.current_state.
     @property
-    def current_state(self) -> object:
+    def current_state(self) -> Any:
         """Delegate to the active controller's ``current_state``."""
-        return self._controller.current_state  # type: ignore[union-attr]
+        return self._controller.current_state
 
     def start_new_game(
         self,
         game_mode: str,
         ai_difficulty: PlayerType | None,
-        screen_manager: object,
+        screen_manager: Any,
     ) -> None:
         """Create a fresh game session and push ``SetupScreen``.
 
@@ -229,14 +230,14 @@ class _GameContext:
         # Create the setup screen for RED (human player 1 always sets up).
         setup_screen = SetupScreen(
             game_controller=controller,
-            screen_manager=screen_manager,  # type: ignore[arg-type]
+            screen_manager=screen_manager,
             player_side=PlayerSide.RED,
             army=list(_STANDARD_ARMY),
             event_bus=event_bus,
             renderer=self._renderer_adapter,
             viewing_player=PlayerSide.RED,
         )
-        screen_manager.push(setup_screen)  # type: ignore[union-attr]
+        screen_manager.push(setup_screen)
 
 
 # ---------------------------------------------------------------------------
