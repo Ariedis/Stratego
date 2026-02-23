@@ -10,9 +10,38 @@ import random
 from typing import Any
 
 from src.application.commands import PlacePiece
+from src.application.event_bus import EventBus
 from src.domain.enums import PlayerSide, Rank
 from src.domain.piece import Piece, Position
 from src.presentation.screens.base import Screen
+
+# Lazy import of pygame so the module works in headless test environments.
+try:
+    import pygame as _pygame
+
+    _QUIT = _pygame.QUIT
+    _KEYDOWN = _pygame.KEYDOWN
+    _MOUSEBUTTONDOWN = _pygame.MOUSEBUTTONDOWN
+except ImportError:
+    _pygame = None  # type: ignore[assignment]
+    _QUIT = 256
+    _KEYDOWN = 768
+    _MOUSEBUTTONDOWN = 1025
+
+# Colour palette
+_BG_COLOUR = (20, 30, 48)
+_TEXT_COLOUR = (220, 220, 220)
+_BTN_COLOUR = (50, 70, 100)
+_BTN_HOVER_COLOUR = (80, 110, 160)
+_BTN_READY_COLOUR = (60, 140, 80)
+_BTN_DISABLED_COLOUR = (40, 50, 65)
+_BTN_TEXT_COLOUR = (230, 230, 230)
+_BTN_TEXT_DISABLED = (100, 100, 110)
+
+# Layout constants — board occupies the left 75 % of the window.
+_BOARD_FRACTION: float = 0.75
+_BOARD_COLS: int = 10
+_BOARD_ROWS: int = 10
 
 # Lake positions (must match board.py _LAKE_POSITIONS).
 _LAKE_POSITIONS: frozenset[tuple[int, int]] = frozenset(
@@ -36,6 +65,12 @@ class SetupScreen(Screen):
     - ``piece_tray``: the list of pieces not yet placed.
     - ``placed_pieces``: the list of pieces that have been placed on the board.
     - ``is_ready``: ``True`` when all 40 pieces have been placed.
+
+    Keyboard shortcuts:
+    - **A** — Auto-arrange all remaining pieces randomly.
+    - **C** — Clear all placed pieces back to the tray.
+    - **R** — Confirm ready (only effective when ``is_ready`` is ``True``).
+    - **Q** — Quit / go back to the main menu.
     """
 
     def __init__(
@@ -44,6 +79,9 @@ class SetupScreen(Screen):
         screen_manager: Any,
         player_side: PlayerSide,
         army: list[Rank],
+        event_bus: EventBus | None = None,
+        renderer: Any = None,
+        viewing_player: PlayerSide = PlayerSide.RED,
     ) -> None:
         """Initialise the setup screen.
 
@@ -53,14 +91,26 @@ class SetupScreen(Screen):
             screen_manager: The ``ScreenManager`` for navigation.
             player_side: Which player is setting up their army.
             army: Ordered list of ``Rank`` values to place (typically 40 items).
+            event_bus: Optional ``EventBus`` — forwarded to ``PlayingScreen``
+                when the player clicks Ready.  When ``None``, the Ready
+                transition is suppressed (useful in unit tests).
+            renderer: Optional renderer adapter — forwarded to ``PlayingScreen``.
+                When ``None``, the Ready transition is suppressed.
+            viewing_player: The player perspective passed to ``PlayingScreen``.
         """
         self._controller = game_controller
         self._screen_manager = screen_manager
         self._player_side = player_side
         self._army = army
+        self._event_bus = event_bus
+        self._renderer = renderer
+        self._viewing_player = viewing_player
         self._piece_tray: list[Piece] = []
         self._placed_pieces: list[Piece] = []
         self._occupied_positions: set[tuple[int, int]] = set()
+        self._font: Any = None
+        self._font_small: Any = None
+        self._mouse_pos: tuple[int, int] = (0, 0)
 
     # ------------------------------------------------------------------
     # Screen lifecycle
@@ -70,8 +120,17 @@ class SetupScreen(Screen):
         """Populate the piece tray from the army list.
 
         Args:
-            data: Context data (ignored for initial setup).
+            data: Context data.  May contain ``event_bus``, ``renderer``, and
+                ``viewing_player`` to override the values supplied at
+                construction time.
         """
+        if "event_bus" in data:
+            self._event_bus = data["event_bus"]
+        if "renderer" in data:
+            self._renderer = data["renderer"]
+        if "viewing_player" in data:
+            self._viewing_player = data["viewing_player"]
+
         self._piece_tray = [
             Piece(
                 rank=rank,
@@ -85,6 +144,14 @@ class SetupScreen(Screen):
         self._placed_pieces = []
         self._occupied_positions = set()
 
+        if _pygame is None:
+            return
+        if not _pygame.get_init():
+            _pygame.init()
+        _pygame.font.init()
+        self._font = _pygame.font.SysFont("Arial", 24)
+        self._font_small = _pygame.font.SysFont("Arial", 18)
+
     def on_exit(self) -> dict[str, Any]:
         """Return the current game state to the next screen.
 
@@ -95,13 +162,100 @@ class SetupScreen(Screen):
         return {"game_state": self._controller.current_state}
 
     def render(self, surface: Any) -> None:
-        """Render the setup screen (stub — visual rendering is platform-specific)."""
+        """Render the setup screen — board background and on-screen buttons.
+
+        Args:
+            surface: The target ``pygame.Surface`` (may be ``None`` in
+                headless test environments).
+        """
+        if surface is None or _pygame is None:
+            return
+
+        w: int = surface.get_width()
+        h: int = surface.get_height()
+        surface.fill(_BG_COLOUR)
+
+        # Board area: delegate to the renderer if available.
+        if self._renderer is not None:
+            self._renderer.render(self._controller.current_state)
+
+        # Side panel.
+        panel_x = int(w * _BOARD_FRACTION)
+        panel_w = w - panel_x
+        _pygame.draw.rect(surface, (30, 45, 70), (panel_x, 0, panel_w, h))
+
+        cx = panel_x + panel_w // 2
+
+        if self._font is not None:
+            title = self._font.render("Setup Phase", True, _TEXT_COLOUR)
+            surface.blit(title, title.get_rect(center=(cx, 40)))
+
+            remaining = self._font.render(
+                f"Pieces left: {len(self._piece_tray)}", True, _TEXT_COLOUR
+            )
+            surface.blit(remaining, remaining.get_rect(center=(cx, 80)))
+
+        # Buttons in the panel.
+        btn_w, btn_h = 160, 40
+        btn_x = cx - btn_w // 2
+
+        buttons = [
+            ("Auto [A]", 140, False, self.auto_arrange),
+            ("Clear [C]", 200, False, self.clear),
+            ("Ready [R]", 280, not self.is_ready, self._on_ready),
+        ]
+        for label, y, disabled, _ in buttons:
+            colour = _BTN_DISABLED_COLOUR if disabled else _BTN_COLOUR
+            rect = _pygame.Rect(btn_x, y, btn_w, btn_h)
+            _pygame.draw.rect(surface, colour, rect, border_radius=6)
+            text_colour = _BTN_TEXT_DISABLED if disabled else _BTN_TEXT_COLOUR
+            font = self._font_small or self._font
+            if font is not None:
+                lbl = font.render(label, True, text_colour)
+                surface.blit(lbl, lbl.get_rect(center=rect.center))
 
     def handle_event(self, event: Any) -> None:
-        """Handle input events (stub — full drag-and-drop wired in subclass)."""
+        """Handle input events.
+
+        Keyboard shortcuts: A = auto-arrange, C = clear, R = ready (if set),
+        Q = abandon setup and return to main menu.
+
+        Mouse: left-click on the side-panel buttons triggers the same actions.
+
+        Args:
+            event: A pygame event (or ``None`` in headless mode).
+        """
+        if event is None or _pygame is None:
+            return
+
+        if event.type == _pygame.MOUSEMOTION:
+            self._mouse_pos = event.pos
+
+        if event.type == _QUIT:
+            _pygame.event.post(_pygame.event.Event(_pygame.QUIT))
+            return
+
+        if event.type == _KEYDOWN:
+            key = event.key
+            if key == _pygame.K_a:
+                self.auto_arrange()
+            elif key == _pygame.K_c:
+                self.clear()
+            elif key == _pygame.K_r and self.is_ready:
+                self._on_ready()
+            elif key == _pygame.K_q:
+                self._on_abandon()
+            return
+
+        if event.type == _MOUSEBUTTONDOWN and event.button == 1:
+            self._handle_mouse_click(event.pos)
 
     def update(self, delta_time: float) -> None:
-        """Advance per-frame logic (stub)."""
+        """Advance per-frame logic (no-op for setup screen).
+
+        Args:
+            delta_time: Elapsed time since the previous frame, in seconds.
+        """
 
     # ------------------------------------------------------------------
     # Tray / placement API (used by tests and the UI layer)
@@ -224,3 +378,71 @@ class SetupScreen(Screen):
         )
         self._placed_pieces = []
         self._occupied_positions = set()
+
+    # ------------------------------------------------------------------
+    # Navigation helpers
+    # ------------------------------------------------------------------
+
+    def _on_ready(self) -> None:
+        """Transition to ``PlayingScreen`` when all pieces are placed.
+
+        Requires ``event_bus`` and ``renderer`` to have been supplied at
+        construction time or via ``on_enter(data)``.  If either is ``None``
+        this method is a no-op (e.g. in unit-test contexts).
+        """
+        if not self.is_ready:
+            return
+        if self._event_bus is None or self._renderer is None:
+            return
+
+        from src.presentation.screens.playing_screen import PlayingScreen
+
+        playing_screen = PlayingScreen(
+            controller=self._controller,
+            screen_manager=self._screen_manager,
+            event_bus=self._event_bus,
+            renderer=self._renderer,
+            viewing_player=self._viewing_player,
+        )
+        self._screen_manager.replace(playing_screen)
+
+    def _on_abandon(self) -> None:
+        """Pop back to the previous screen (main menu or start-game screen)."""
+        try:
+            self._screen_manager.pop()
+        except IndexError:
+            pass
+
+    def _handle_mouse_click(self, pixel_pos: tuple[int, int]) -> None:
+        """Handle a left mouse-button click in the setup screen.
+
+        Clicks in the side panel activate the Auto-arrange, Clear, and Ready
+        buttons.
+
+        Args:
+            pixel_pos: The (x, y) pixel coordinates of the click.
+        """
+        if _pygame is None:
+            return
+        try:
+            info = _pygame.display.Info()
+            w = info.current_w or 1024
+        except Exception:
+            return
+
+        panel_x = int(w * _BOARD_FRACTION)
+        panel_w = w - panel_x
+        cx = panel_x + panel_w // 2
+        btn_w, btn_h = 160, 40
+        btn_x = cx - btn_w // 2
+
+        button_rects = [
+            (btn_x, 140, btn_w, btn_h, self.auto_arrange),
+            (btn_x, 200, btn_w, btn_h, self.clear),
+            (btn_x, 280, btn_w, btn_h, self._on_ready),
+        ]
+        for bx, by, bw, bh, action in button_rects:
+            rect = _pygame.Rect(bx, by, bw, bh)
+            if rect.collidepoint(pixel_pos):
+                action()
+                return
