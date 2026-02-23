@@ -385,9 +385,14 @@ class PlayingScreen(Screen):
         if _pygame is None:
             return None
         try:
-            info = _pygame.display.Info()
-            w = info.current_w or 1024
-            h = info.current_h or 768
+            surface = _pygame.display.get_surface()
+            if surface is not None:
+                w = surface.get_width()
+                h = surface.get_height()
+            else:
+                info = _pygame.display.Info()
+                w = info.current_w or 1024
+                h = info.current_h or 768
             panel_x = int(w * _BOARD_FRACTION)
             panel_w = w - panel_x
             cx = panel_x + panel_w // 2

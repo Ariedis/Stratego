@@ -92,6 +92,10 @@ class GameLoop:
             import pygame
 
             for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.stop()
+                    events_processed = True
+                    continue
                 self._screen_manager.handle_event(event)
                 events_processed = True
         except Exception:  # noqa: S110
@@ -109,5 +113,23 @@ class GameLoop:
         current_screen.update(1.0 / FPS)
 
     def _render(self) -> None:
-        """Render the current game state via the injected renderer."""
+        """Render the current frame.
+
+        In graphical (pygame) mode, rendering is screen-driven: the active
+        screen draws itself (main menu, setup, playing, etc.) onto the display
+        surface and the frame is flipped.  In headless/test environments,
+        fall back to the legacy state renderer to preserve existing test
+        behavior.
+        """
+        try:
+            import pygame
+
+            surface = pygame.display.get_surface()
+            if surface is not None:
+                self._screen_manager.render(surface)
+                pygame.display.flip()
+                return
+        except Exception:  # noqa: S110
+            logger.debug("GameLoop: pygame display unavailable, using fallback renderer")
+
         self._renderer.render(self._controller.current_state)

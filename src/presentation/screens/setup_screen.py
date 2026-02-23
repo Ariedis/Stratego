@@ -7,11 +7,12 @@ Specification: screen_flow.md §3.6; system_design.md §2.4
 from __future__ import annotations
 
 import random
+from dataclasses import replace as dc_replace
 from typing import Any
 
 from src.application.commands import PlacePiece
 from src.application.event_bus import EventBus
-from src.domain.enums import PlayerSide, Rank
+from src.domain.enums import GamePhase, PlayerSide, PlayerType, Rank
 from src.domain.piece import Piece, Position
 from src.presentation.screens.base import Screen
 
@@ -395,6 +396,42 @@ class SetupScreen(Screen):
         if self._event_bus is None or self._renderer is None:
             return
 
+        state = self._controller.current_state
+        opponent_side = (
+            PlayerSide.BLUE if self._player_side == PlayerSide.RED else PlayerSide.RED
+        )
+
+        # vs-AI: generate the AI setup instantly when the human is ready.
+        if self._is_ai_side(opponent_side) and self._player_piece_count(opponent_side) == 0:
+            self._auto_arrange_side(opponent_side)
+
+        # Two-player: hand off to the opponent's setup screen if they have not
+        # completed setup yet.
+        if (
+            self._is_human_side(opponent_side)
+            and self._player_piece_count(opponent_side) < len(self._army)
+        ):
+            next_setup = SetupScreen(
+                game_controller=self._controller,
+                screen_manager=self._screen_manager,
+                player_side=opponent_side,
+                army=list(self._army),
+                event_bus=self._event_bus,
+                renderer=self._renderer,
+                viewing_player=opponent_side,
+            )
+            self._screen_manager.replace(next_setup)
+            return
+
+        # Both sides are now set up — switch to PLAYING phase before entering
+        # the playing screen.
+        state = self._controller.current_state
+        self._controller._state = dc_replace(  # noqa: SLF001
+            state,
+            phase=GamePhase.PLAYING,
+            active_player=PlayerSide.RED,
+        )
+
         from src.presentation.screens.playing_screen import PlayingScreen
 
         playing_screen = PlayingScreen(
@@ -425,9 +462,28 @@ class SetupScreen(Screen):
         if _pygame is None:
             return
         try:
-            info = _pygame.display.Info()
-            w = info.current_w or 1024
+            surface = _pygame.display.get_surface()
+            if surface is not None:
+                w = surface.get_width()
+                h = surface.get_height()
+            else:
+                info = _pygame.display.Info()
+                w = info.current_w or 1024
+                h = info.current_h or 768
         except Exception:
+            return
+
+        board_w = int(w * _BOARD_FRACTION)
+        cell_w = board_w // _BOARD_COLS
+        cell_h = h // _BOARD_ROWS
+
+        # Board click: place the next tray piece on the clicked setup square.
+        px, py = pixel_pos
+        if px < board_w and cell_w > 0 and cell_h > 0:
+            col = min(px // cell_w, _BOARD_COLS - 1)
+            row = min(py // cell_h, _BOARD_ROWS - 1)
+            if self._piece_tray:
+                self.place_piece(self._piece_tray[0], Position(row, col))
             return
 
         panel_x = int(w * _BOARD_FRACTION)
@@ -446,3 +502,56 @@ class SetupScreen(Screen):
             if rect.collidepoint(pixel_pos):
                 action()
                 return
+
+    def _player_piece_count(self, side: PlayerSide) -> int:
+        """Return the number of placed pieces for *side* in current state."""
+        state = self._controller.current_state
+        for player in state.players:
+            if player.side == side:
+                return len(player.pieces_remaining)
+        return 0
+
+    def _is_ai_side(self, side: PlayerSide) -> bool:
+        """Return True iff *side* is controlled by an AI player."""
+        state = self._controller.current_state
+        for player in state.players:
+            if player.side == side:
+                return player.player_type in {
+                    PlayerType.AI_EASY,
+                    PlayerType.AI_MEDIUM,
+                    PlayerType.AI_HARD,
+                }
+        return False
+
+    def _is_human_side(self, side: PlayerSide) -> bool:
+        """Return True iff *side* is a human player."""
+        state = self._controller.current_state
+        for player in state.players:
+            if player.side == side:
+                return player.player_type == PlayerType.HUMAN
+        return False
+
+    def _auto_arrange_side(self, side: PlayerSide) -> None:
+        """Auto-place a full army for *side* using random valid setup squares."""
+        low, high = _SETUP_ZONES[side]
+        positions = [
+            Position(row, col)
+            for row in range(low, high + 1)
+            for col in range(_BOARD_COLS)
+        ]
+        random.shuffle(positions)
+
+        pos_index = 0
+        for rank in sorted(self._army):
+            while pos_index < len(positions):
+                pos = positions[pos_index]
+                pos_index += 1
+                piece = Piece(
+                    rank=rank,
+                    owner=side,
+                    revealed=False,
+                    has_moved=False,
+                    position=Position(0, 0),
+                )
+                self._controller.submit_command(PlacePiece(piece=piece, pos=pos))
+                break

@@ -297,9 +297,8 @@ def _launch_pygame(config: Config, initial_state: GameState) -> None:
         """Thin adapter that fixes the viewing-player for PygameRenderer."""
 
         def render(self, state: GameState) -> None:
-            """Render *state* then flip the display buffer."""
+            """Render *state* for the configured viewing player."""
             pygame_renderer.render(state, _viewing_player)
-            pygame.display.flip()
 
     renderer_adapter = _RendererAdapter()
 

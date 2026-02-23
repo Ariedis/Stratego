@@ -68,6 +68,9 @@ class TurnManager:
 
         If the newly active player is an AI type, enqueue a move request.
         """
+        if self._ai_future is not None and not self._ai_future.done():
+            return
+
         state = self._controller.current_state
         active_player = next(
             (p for p in state.players if p.side == event.active_player), None
@@ -78,8 +81,10 @@ class TurnManager:
             return
 
         # Submit the AI move request asynchronously.
-        self._ai_future = self._ai_orchestrator.request_move(
-            state, active_player.player_type
+        self._ai_future = self._executor.submit(
+            self._ai_orchestrator.request_move,
+            state,
+            active_player.player_type,
         )
 
     # ------------------------------------------------------------------
@@ -102,7 +107,11 @@ class TurnManager:
         future = self._ai_future
         self._ai_future = None
 
-        ai_move: Move = future.result()
+        try:
+            ai_move: Move = future.result()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TurnManager: AI move generation failed: %s", exc)
+            return
 
         for attempt in range(_MAX_RETRIES):
             cmd = MovePiece(from_pos=ai_move.from_pos, to_pos=ai_move.to_pos)
