@@ -120,7 +120,9 @@ class MainMenuScreen(Screen):
             divider_y = sub_rect.bottom + 18
             divider_x0 = w // 2 - 200
             divider_x1 = w // 2 + 200
-            _pygame.draw.line(surface, (74, 103, 65), (divider_x0, divider_y), (divider_x1, divider_y), 1)
+            _pygame.draw.line(
+                surface, (74, 103, 65), (divider_x0, divider_y), (divider_x1, divider_y), 1
+            )
 
         # Buttons
         for btn in self._buttons:
