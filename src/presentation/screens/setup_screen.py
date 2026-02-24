@@ -33,14 +33,18 @@ except ImportError:
 _BG_COLOUR = (20, 30, 48)
 _TEXT_COLOUR = (220, 220, 220)
 _BTN_COLOUR = (50, 70, 100)
-_BTN_HOVER_COLOUR = (80, 110, 160)
-_BTN_READY_COLOUR = (60, 140, 80)
+_BTN_HOVER_COLOUR = (72, 100, 144)  # COLOUR_BTN_HOVER
+_BTN_READY_COLOUR = (41, 128, 185)  # COLOUR_BTN_PRIMARY
+_BTN_DANGER_COLOUR = (192, 57, 43)  # COLOUR_BTN_DANGER (for Abandon)
 _BTN_DISABLED_COLOUR = (40, 50, 65)
 _BTN_TEXT_COLOUR = (230, 230, 230)
-_BTN_TEXT_DISABLED = (100, 100, 110)
+_BTN_TEXT_DISABLED = (100, 110, 125)
+_SETUP_ZONE_BORDER_COLOUR = (220, 180, 80)  # COLOUR_TITLE_GOLD — setup zone guide
+_TEAM_RED_COLOUR = (200, 60, 60)    # COLOUR_TEAM_RED
+_TEAM_BLUE_COLOUR = (60, 110, 210)  # COLOUR_TEAM_BLUE
 
-# Layout constants — board occupies the left 75 % of the window.
-_BOARD_FRACTION: float = 0.75
+# Layout constants — board occupies the left 80 % of the window.
+_BOARD_FRACTION: float = 0.80
 _BOARD_COLS: int = 10
 _BOARD_ROWS: int = 10
 
@@ -180,6 +184,20 @@ class SetupScreen(Screen):
         if self._renderer is not None:
             self._renderer.render(self._controller.current_state)
 
+        # Setup zone highlight (gold border around the player's setup rows).
+        board_w = int(w * _BOARD_FRACTION)
+        if board_w > 0 and h > 0:
+            cell_h = h // _BOARD_ROWS
+            low, high = _SETUP_ZONES[self._player_side]
+            zone_y = low * cell_h
+            zone_h = (high - low + 1) * cell_h
+            _pygame.draw.rect(
+                surface,
+                _SETUP_ZONE_BORDER_COLOUR,
+                _pygame.Rect(0, zone_y, board_w, zone_h),
+                3,
+            )
+
         # Side panel.
         panel_x = int(w * _BOARD_FRACTION)
         panel_w = w - panel_x
@@ -188,26 +206,36 @@ class SetupScreen(Screen):
         cx = panel_x + panel_w // 2
 
         if self._font is not None:
-            title = self._font.render("Setup Phase", True, _TEXT_COLOUR)
-            surface.blit(title, title.get_rect(center=(cx, 40)))
+            title = self._font.render("Setup", True, _TEXT_COLOUR)
+            surface.blit(title, title.get_rect(center=(cx, 28)))
+
+            # Player identity label (wireframe annotation 5)
+            player_num = "1" if self._player_side == PlayerSide.RED else "2"
+            army_name = "Red Army" if self._player_side == PlayerSide.RED else "Blue Army"
+            player_label_text = f"Player {player_num} \u2014 {army_name}"
+            player_colour = (
+                _TEAM_RED_COLOUR if self._player_side == PlayerSide.RED else _TEAM_BLUE_COLOUR
+            )
+            player_label = self._font.render(player_label_text, True, player_colour)
+            surface.blit(player_label, player_label.get_rect(center=(cx, 58)))
 
             remaining = self._font.render(
                 f"Pieces left: {len(self._piece_tray)}", True, _TEXT_COLOUR
             )
-            surface.blit(remaining, remaining.get_rect(center=(cx, 80)))
+            surface.blit(remaining, remaining.get_rect(center=(cx, 90)))
 
         # Buttons in the panel.
         btn_w, btn_h = 160, 40
         btn_x = cx - btn_w // 2
 
         buttons = [
-            ("Auto [A]", 140, False, self.auto_arrange),
-            ("Clear [C]", 200, False, self.clear),
-            ("Abandon [Q]", 260, False, self._on_abandon),
-            ("Ready [R]", 320, not self.is_ready, self._on_ready),
+            ("Auto [A]", 150, False, _BTN_COLOUR, self.auto_arrange),
+            ("Clear [C]", 200, False, _BTN_COLOUR, self.clear),
+            ("Abandon [Q]", 250, False, _BTN_DANGER_COLOUR, self._on_abandon),
+            ("Ready [R]", 310, not self.is_ready, _BTN_READY_COLOUR, self._on_ready),
         ]
-        for label, y, disabled, _ in buttons:
-            colour = _BTN_DISABLED_COLOUR if disabled else _BTN_COLOUR
+        for label, y, disabled, btn_colour, _ in buttons:
+            colour = _BTN_DISABLED_COLOUR if disabled else btn_colour
             rect = _pygame.Rect(btn_x, y, btn_w, btn_h)
             _pygame.draw.rect(surface, colour, rect, border_radius=8)
             text_colour = _BTN_TEXT_DISABLED if disabled else _BTN_TEXT_COLOUR
@@ -494,10 +522,10 @@ class SetupScreen(Screen):
         btn_x = cx - btn_w // 2
 
         button_rects = [
-            (btn_x, 140, btn_w, btn_h, self.auto_arrange),
+            (btn_x, 150, btn_w, btn_h, self.auto_arrange),
             (btn_x, 200, btn_w, btn_h, self.clear),
-            (btn_x, 260, btn_w, btn_h, self._on_abandon),
-            (btn_x, 320, btn_w, btn_h, self._on_ready),
+            (btn_x, 250, btn_w, btn_h, self._on_abandon),
+            (btn_x, 310, btn_w, btn_h, self._on_ready),
         ]
         for bx, by, bw, bh, action in button_rects:
             rect = _pygame.Rect(bx, by, bw, bh)

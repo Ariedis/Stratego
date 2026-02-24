@@ -90,8 +90,8 @@ class TestStartGameLifecycle:
         result = start_screen.on_exit()  # type: ignore[union-attr]
         assert "ai_difficulty" in result
 
-    def test_default_game_mode_is_two_player(self, start_screen: object) -> None:
-        assert start_screen.game_mode == GAME_MODE_TWO_PLAYER  # type: ignore[union-attr]
+    def test_default_game_mode_is_vs_ai(self, start_screen: object) -> None:
+        assert start_screen.game_mode == GAME_MODE_VS_AI  # type: ignore[union-attr]
 
     def test_default_ai_difficulty_is_medium(self, start_screen: object) -> None:
         assert start_screen.ai_difficulty == PlayerType.AI_MEDIUM  # type: ignore[union-attr]
@@ -142,36 +142,37 @@ class TestStartGameNavigation:
         start_screen._on_back()  # type: ignore[union-attr]
         mock_screen_manager.pop.assert_called_once()
 
-    def test_confirm_two_player_calls_start_new_game(
+    def test_confirm_pushes_army_select_screen(
         self,
         start_screen: object,
         mock_game_context: MagicMock,
         mock_screen_manager: MagicMock,
     ) -> None:
-        """Confirm in two-player mode calls game_context.start_new_game."""
+        """Confirm navigates to ArmySelectScreen (not directly to SetupScreen)."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
         start_screen._select_two_player()  # type: ignore[union-attr]
         start_screen._on_confirm()  # type: ignore[union-attr]
-        mock_game_context.start_new_game.assert_called_once_with(
-            game_mode=GAME_MODE_TWO_PLAYER,
-            ai_difficulty=None,
-            screen_manager=mock_screen_manager,
-        )
+        mock_screen_manager.push.assert_called_once()
+        pushed = mock_screen_manager.push.call_args[0][0]
+        assert isinstance(pushed, ArmySelectScreen)
 
-    def test_confirm_vs_ai_passes_difficulty(
+    def test_confirm_vs_ai_passes_difficulty_to_army_screen(
         self,
         start_screen: object,
         mock_game_context: MagicMock,
         mock_screen_manager: MagicMock,
     ) -> None:
-        """Confirm in vs-AI mode passes the selected difficulty."""
+        """Confirm in vs-AI mode passes the difficulty to ArmySelectScreen."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
         start_screen._select_vs_ai()  # type: ignore[union-attr]
         start_screen._make_difficulty_selector(PlayerType.AI_EASY)()  # type: ignore[union-attr]
         start_screen._on_confirm()  # type: ignore[union-attr]
-        mock_game_context.start_new_game.assert_called_once_with(
-            game_mode=GAME_MODE_VS_AI,
-            ai_difficulty=PlayerType.AI_EASY,
-            screen_manager=mock_screen_manager,
-        )
+        mock_screen_manager.push.assert_called_once()
+        pushed = mock_screen_manager.push.call_args[0][0]
+        assert isinstance(pushed, ArmySelectScreen)
+        assert pushed._ai_difficulty == PlayerType.AI_EASY  # type: ignore[attr-defined]
 
     def test_update_does_not_raise(self, start_screen: object) -> None:
         start_screen.update(0.016)  # type: ignore[union-attr]

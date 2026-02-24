@@ -32,7 +32,7 @@ except ImportError:
     _MOUSEMOTION = 1024
 
 # Layout constants — must match pygame_renderer.py
-_BOARD_FRACTION: float = 0.75
+_BOARD_FRACTION: float = 0.80
 _BOARD_COLS: int = 10
 _BOARD_ROWS: int = 10
 
@@ -88,6 +88,7 @@ class PlayingScreen(Screen):
         event_bus: EventBus,
         renderer: Any,
         viewing_player: PlayerSide = PlayerSide.RED,
+        game_context: Any = None,
     ) -> None:
         """Initialise the playing screen.
 
@@ -100,12 +101,16 @@ class PlayingScreen(Screen):
                 the board and flips the display buffer.
             viewing_player: The player whose perspective is shown
                 (fog-of-war).  Defaults to ``PlayerSide.RED``.
+            game_context: Optional ``_GameContext`` — forwarded to
+                ``GameOverScreen`` to enable proper navigation from the
+                game-over screen.
         """
         self._controller = controller
         self._screen_manager = screen_manager
         self._event_bus = event_bus
         self._renderer = renderer
         self._viewing_player = viewing_player
+        self._game_context = game_context
 
         self._selected_pos: Position | None = None
         self._invalid_flash: float = 0.0   # seconds remaining for red flash
@@ -278,6 +283,7 @@ class PlayingScreen(Screen):
             winner=event.winner,
             reason=event.reason,
             turn_count=self._controller.current_state.turn_number,
+            game_context=self._game_context,
         )
         self._screen_manager.push(game_over_screen)
 
@@ -347,6 +353,10 @@ class PlayingScreen(Screen):
         """
         if _pygame is None:
             return
+        save_rect = self._save_button_rect()
+        if save_rect is not None and save_rect.collidepoint(pixel_pos):
+            self._on_save_game()
+            return
         quit_rect = self._quit_button_rect()
         if quit_rect is not None and quit_rect.collidepoint(pixel_pos):
             self._on_quit_to_menu()
@@ -394,6 +404,16 @@ class PlayingScreen(Screen):
                 )
                 surface.blit(status_surf, status_surf.get_rect(center=(cx, 140)))
 
+        # Save Game button.
+        save_rect = self._save_button_rect()
+        if save_rect is not None:
+            is_hovered_save = save_rect.collidepoint(self._mouse_pos)
+            save_colour = _BTN_HOVER_COLOUR if is_hovered_save else _BTN_COLOUR
+            _pygame.draw.rect(surface, save_colour, save_rect, border_radius=6)
+            if self._font_small is not None:
+                save_label = self._font_small.render("\U0001f4be Save", True, _TEXT_COLOUR)
+                surface.blit(save_label, save_label.get_rect(center=save_rect.center))
+
         # Quit to Menu button.
         quit_rect = self._quit_button_rect()
         if quit_rect is not None:
@@ -401,8 +421,28 @@ class PlayingScreen(Screen):
             btn_colour = _BTN_HOVER_COLOUR if is_hovered else _BTN_COLOUR
             _pygame.draw.rect(surface, btn_colour, quit_rect, border_radius=6)
             if self._font_small is not None:
-                quit_label = self._font_small.render("Quit to Menu", True, _TEXT_COLOUR)
+                quit_label = self._font_small.render("Quit \u2715", True, _TEXT_COLOUR)
                 surface.blit(quit_label, quit_label.get_rect(center=quit_rect.center))
+
+    def _save_button_rect(self) -> Any:
+        """Return the pygame.Rect for the 'Save' button."""
+        if _pygame is None:
+            return None
+        try:
+            surface = _pygame.display.get_surface()
+            if surface is not None:
+                w = surface.get_width()
+                h = surface.get_height()
+            else:
+                info = _pygame.display.Info()
+                w = info.current_w or 1024
+                h = info.current_h or 768
+            panel_x = int(w * _BOARD_FRACTION)
+            panel_w = w - panel_x
+            cx = panel_x + panel_w // 2
+            return _pygame.Rect(cx - 80, h - 130, 160, 40)
+        except Exception:
+            return None
 
     def _quit_button_rect(self) -> Any:
         """Return the pygame.Rect for the 'Quit to Menu' button."""
@@ -432,6 +472,17 @@ class PlayingScreen(Screen):
             return f"{name}'s move"
         except Exception:
             return ""
+
+    def _on_save_game(self) -> None:
+        """Save the current game state (stub — to be wired to the repository)."""
+        try:
+            if self._game_context is not None and hasattr(self._game_context, "repository"):
+                self._game_context.repository.save(
+                    self._controller.current_state, "autosave.json"
+                )
+                self._status_message = "Game saved!"
+        except Exception:  # noqa: BLE001
+            self._status_message = "Save failed"
 
     def _on_quit_to_menu(self) -> None:
         """Auto-save (future) and return to the main menu.
