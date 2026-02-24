@@ -33,6 +33,13 @@ _BTN_COLOUR = (50, 70, 100)
 _BTN_HOVER_COLOUR = (80, 110, 160)
 _BTN_TEXT_COLOUR = (230, 230, 230)
 
+# Mapping of raw domain reason codes to human-readable strings (H2.4).
+_REASON_LABELS: dict[str, str] = {
+    "flag_captured": "Flag captured!",
+    "no_legal_moves": "Opponent has no moves left",
+    "draw": "No moves available for either side",
+}
+
 
 class GameOverScreen(Screen):
     """Screen shown when the game ends.
@@ -127,22 +134,24 @@ class GameOverScreen(Screen):
 
         cy = h // 3
 
-        # Winner / draw headline
+        # Winner / draw headline (H2.5 — use "Red Army wins!" not raw enum value)
         if self._font_large is not None:
             if self._winner is None:
                 headline = "Draw!"
                 headline_colour = _WIN_DRAW
             else:
-                headline = f"{self._winner.value} wins!"
+                side_name = "Red Army" if self._winner == PlayerSide.RED else "Blue Army"
+                headline = f"{side_name} wins!"
                 headline_colour = (
                     _WIN_RED if self._winner == PlayerSide.RED else _WIN_BLUE
                 )
             headline_surf = self._font_large.render(headline, True, headline_colour)
             surface.blit(headline_surf, headline_surf.get_rect(center=(w // 2, cy)))
 
-        # Reason
+        # Reason — map domain code to a human sentence (H2.4).
         if self._font_medium is not None:
-            reason_surf = self._font_medium.render(self._reason, True, _TEXT_COLOUR)
+            friendly_reason = _REASON_LABELS.get(self._reason, self._reason)
+            reason_surf = self._font_medium.render(friendly_reason, True, _TEXT_COLOUR)
             surface.blit(reason_surf, reason_surf.get_rect(center=(w // 2, cy + 70)))
 
         # Turn count
@@ -211,14 +220,14 @@ class GameOverScreen(Screen):
 
         return [
             {
-                "label": "Play Again",
+                "label": "Main Menu",
                 "rect": _pygame.Rect(start_x, y, btn_w, btn_h),
-                "action": self._on_play_again,
+                "action": self._on_main_menu,
             },
             {
-                "label": "Main Menu",
+                "label": "Play Again",
                 "rect": _pygame.Rect(start_x + btn_w + gap, y, btn_w, btn_h),
-                "action": self._on_main_menu,
+                "action": self._on_play_again,
             },
             {
                 "label": "Quit",
@@ -228,19 +237,19 @@ class GameOverScreen(Screen):
         ]
 
     def _on_play_again(self) -> None:
-        """Return to the Start Game screen to configure a new game."""
-        # Pop the game-over screen to return to PlayingScreen, then keep
-        # popping until we're back at MainMenu and push StartGameScreen.
-        # Simpler: pop twice to reach MainMenuScreen then let it handle
-        # the next transition.  If the stack depth is uncertain, use a
-        # robust approach: pop this screen, which triggers MainMenuScreen
-        # if that's next, or we can navigate explicitly.
-        # For now: pop back to the top-most remaining screen and let the
-        # user press "Start Game" again.
-        try:
-            self._screen_manager.pop()  # pops GameOverScreen
-        except IndexError:
-            pass
+        """Navigate back to the main menu to start a fresh game.
+
+        Pops all transient game screens (GameOver, Playing, Setup, StartGame)
+        until only the root ``MainMenuScreen`` remains on the stack.  This
+        prevents the player being returned to a finished ``PlayingScreen``
+        (H9.3).
+        """
+        # Pop every screen except the root (base) screen.
+        while len(self._screen_manager._stack) > 1:  # noqa: SLF001
+            try:
+                self._screen_manager.pop()
+            except IndexError:
+                break
 
     def _on_main_menu(self) -> None:
         """Return to the main menu by popping all screens above it."""

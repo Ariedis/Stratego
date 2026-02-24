@@ -55,6 +55,7 @@ class MainMenuScreen(Screen):
         self._game_context = game_context
         self._font_large: Any = None
         self._font_medium: Any = None
+        self._font_small: Any = None
         self._buttons: list[dict[str, Any]] = []
         self._mouse_pos: tuple[int, int] = (0, 0)
 
@@ -75,6 +76,7 @@ class MainMenuScreen(Screen):
         _pygame.font.init()
         self._font_large = _pygame.font.SysFont("Arial", 56, bold=True)
         self._font_medium = _pygame.font.SysFont("Arial", 32)
+        self._font_small = _pygame.font.SysFont("Arial", 18)
         self._buttons = self._build_buttons()
 
     def on_exit(self) -> dict[str, Any]:
@@ -100,11 +102,27 @@ class MainMenuScreen(Screen):
         # Background
         surface.fill(_BG_COLOUR)
 
-        # Title
+        # Title (H — named "Conqueror's Quest" per wireframe annotation 1)
         if self._font_large is not None:
-            title_surf = self._font_large.render("STRATEGO", True, _TITLE_COLOUR)
+            title_surf = self._font_large.render("CONQUEROR'S QUEST", True, _TITLE_COLOUR)
             title_rect = title_surf.get_rect(center=(w // 2, h // 5))
             surface.blit(title_surf, title_rect)
+
+        # Subtitle
+        if self._font_small is not None:
+            subtitle_surf = self._font_small.render(
+                "A Stratego-inspired strategy game", True, (160, 180, 200)
+            )
+            sub_rect = subtitle_surf.get_rect(center=(w // 2, h // 5 + 52))
+            surface.blit(subtitle_surf, sub_rect)
+
+            # Divider below subtitle (H8.4)
+            divider_y = sub_rect.bottom + 18
+            divider_x0 = w // 2 - 200
+            divider_x1 = w // 2 + 200
+            _pygame.draw.line(
+                surface, (74, 103, 65), (divider_x0, divider_y), (divider_x1, divider_y), 1
+            )
 
         # Buttons
         for btn in self._buttons:

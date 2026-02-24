@@ -211,14 +211,14 @@ class StartGameScreen(Screen):
         mode_y = 180
         mode_label_offset = 220
         buttons.append({
-            "label": "2 Players",
+            "label": "Local 2-Player",
             "rect": _pygame.Rect(cx - mode_label_offset, mode_y, btn_w, btn_h),
             "selected": self._game_mode == GAME_MODE_TWO_PLAYER,
             "action": self._select_two_player,
             "font": self._font_medium,
         })
         buttons.append({
-            "label": "vs AI",
+            "label": "vs Computer",
             "rect": _pygame.Rect(cx - mode_label_offset + btn_w + gap, mode_y, btn_w, btn_h),
             "selected": self._game_mode == GAME_MODE_VS_AI,
             "action": self._select_vs_ai,
@@ -238,7 +238,7 @@ class StartGameScreen(Screen):
                     "font": self._font_small or self._font_medium,
                 })
 
-        # --- Navigation buttons ---
+        # --- Navigation buttons (H4.4: Back on left, Confirm on right) ---
         nav_y = 520
         nav_btn_w = 160
         buttons.append({

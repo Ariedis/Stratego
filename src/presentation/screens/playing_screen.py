@@ -47,6 +47,28 @@ _BTN_HOVER_COLOUR = (80, 110, 160)
 _STATUS_RED = (200, 60, 60)
 _STATUS_BLUE = (60, 100, 200)
 
+# Friendly player names (H1.4).
+_PLAYER_NAMES: dict[PlayerSide, str] = {
+    PlayerSide.RED: "Red Army",
+    PlayerSide.BLUE: "Blue Army",
+}
+
+# Human-readable invalid-move messages (H9.1).
+_INVALID_MOVE_MESSAGES: dict[str, str] = {
+    "piece_blocked": "That path is blocked",
+    "wrong_turn": "It is not your turn",
+    "immovable_piece": "Bombs and Flags cannot move",
+    "out_of_bounds": "That square is off the board",
+    "lake_square": "Pieces cannot enter the lake",
+    "friendly_fire": "You cannot capture your own piece",
+    "two_square_rule": (
+        "You cannot move this piece back and forth on consecutive turns "
+        "(two-square rule)"
+    ),
+    "no_piece": "No piece at that position",
+    "wrong_phase": "Moves are not allowed during setup",
+}
+
 
 class PlayingScreen(Screen):
     """The main in-game screen — renders the board and handles player input.
@@ -262,7 +284,8 @@ class PlayingScreen(Screen):
     def _on_invalid_move(self, event: InvalidMove) -> None:
         """Handle an invalid move — flash the selected square red."""
         self._invalid_flash = 1.5
-        self._status_message = f"Invalid: {event.reason}"
+        friendly_msg = _INVALID_MOVE_MESSAGES.get(event.reason, event.reason)
+        self._status_message = friendly_msg
         logger.debug("PlayingScreen: invalid move — %s", event.reason)
 
     # ------------------------------------------------------------------
@@ -346,13 +369,14 @@ class PlayingScreen(Screen):
 
         cx = panel_x + panel_w // 2
 
-        # Active player label.
+        # Active player label (H1.4 — use friendly army name).
         state: GameState = self._controller.current_state
         player_colour = (
             _STATUS_RED if state.active_player == PlayerSide.RED else _STATUS_BLUE
         )
+        player_name = _PLAYER_NAMES.get(state.active_player, state.active_player.value)
         player_label = self._font.render(
-            f"{state.active_player.value}'s turn", True, player_colour
+            f"{player_name}'s turn", True, player_colour
         )
         surface.blit(player_label, player_label.get_rect(center=(cx, 60)))
 
@@ -401,22 +425,23 @@ class PlayingScreen(Screen):
             return None
 
     def _active_player_label(self) -> str:
-        """Return a short status string for the active player."""
+        """Return a short status string for the active player (H1.4)."""
         try:
             state: GameState = self._controller.current_state
-            return f"{state.active_player.value}'s move"
+            name = _PLAYER_NAMES.get(state.active_player, state.active_player.value)
+            return f"{name}'s move"
         except Exception:
             return ""
 
     def _on_quit_to_menu(self) -> None:
-        """Auto-save (future) and return to the main menu."""
-        # Pop until MainMenuScreen is reached.  For now we use pop() since
-        # PlayingScreen is always on top of SetupScreen which sits on top of
-        # StartGameScreen which sits on top of MainMenuScreen.
-        # A clean replace(MainMenuScreen) would require a reference to the
-        # existing MainMenuScreen instance; use pop-chain for simplicity.
-        try:
-            # Pop PlayingScreen → SetupScreen (if still in stack)
-            self._screen_manager.pop()
-        except IndexError:
-            pass
+        """Auto-save (future) and return to the main menu.
+
+        Pops all game screens until only the root ``MainMenuScreen`` remains,
+        so the playing screen is not left on the stack (H3.3).
+        """
+        # Pop every screen except the root (base) screen.
+        while len(self._screen_manager._stack) > 1:  # noqa: SLF001
+            try:
+                self._screen_manager.pop()
+            except IndexError:
+                break

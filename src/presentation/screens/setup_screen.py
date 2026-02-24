@@ -203,12 +203,13 @@ class SetupScreen(Screen):
         buttons = [
             ("Auto [A]", 140, False, self.auto_arrange),
             ("Clear [C]", 200, False, self.clear),
-            ("Ready [R]", 280, not self.is_ready, self._on_ready),
+            ("Abandon [Q]", 260, False, self._on_abandon),
+            ("Ready [R]", 320, not self.is_ready, self._on_ready),
         ]
         for label, y, disabled, _ in buttons:
             colour = _BTN_DISABLED_COLOUR if disabled else _BTN_COLOUR
             rect = _pygame.Rect(btn_x, y, btn_w, btn_h)
-            _pygame.draw.rect(surface, colour, rect, border_radius=6)
+            _pygame.draw.rect(surface, colour, rect, border_radius=8)
             text_colour = _BTN_TEXT_DISABLED if disabled else _BTN_TEXT_COLOUR
             font = self._font_small or self._font
             if font is not None:
@@ -495,7 +496,8 @@ class SetupScreen(Screen):
         button_rects = [
             (btn_x, 140, btn_w, btn_h, self.auto_arrange),
             (btn_x, 200, btn_w, btn_h, self.clear),
-            (btn_x, 280, btn_w, btn_h, self._on_ready),
+            (btn_x, 260, btn_w, btn_h, self._on_abandon),
+            (btn_x, 320, btn_w, btn_h, self._on_ready),
         ]
         for bx, by, bw, bh, action in button_rects:
             rect = _pygame.Rect(bx, by, bw, bh)
