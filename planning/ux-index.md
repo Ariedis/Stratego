@@ -24,9 +24,9 @@ artist to implement it without further clarification.
 
 | Document | Contents |
 |---|---|
-| [ux-competitive-analysis.md](./ux-competitive-analysis.md) | Survey of Lichess, Board Game Arena, Chess.com, and Tabletop Simulator |
+| [ux-competitive-analysis.md](./ux-competitive-analysis.md) | Survey of Lichess, Board Game Arena, Chess.com, and Tabletop Simulator — **v1.1: Lichess and BGA live-verified; chessground source reviewed** |
 | [ux-heuristics-evaluation.md](./ux-heuristics-evaluation.md) | Nielsen's 10 heuristics evaluation of all 8 screens with actionable improvements |
-| [ux-visual-style-guide.md](./ux-visual-style-guide.md) | Colour palette, typography, spacing system, component library |
+| [ux-visual-style-guide.md](./ux-visual-style-guide.md) | Colour palette, typography, spacing system, component library — **v1.1: animation timing sourced from Lichess chessground** |
 | [ux-user-journeys.md](./ux-user-journeys.md) | Journey maps for novice and experienced player personas |
 | [ux-accessibility.md](./ux-accessibility.md) | WCAG 2.1 AA contrast ratios, keyboard nav, screen-reader labels |
 | [ux-wireframe-main-menu.md](./ux-wireframe-main-menu.md) | `MainMenuScreen` wireframe + interaction spec |

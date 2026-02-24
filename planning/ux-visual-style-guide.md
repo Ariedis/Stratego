@@ -1,6 +1,6 @@
 # Visual Style Guide: Conqueror's Quest
 
-**Version:** v1.0 Draft  
+**Version:** v1.1 (animation timing verified against Lichess chessground source)  
 **Author:** Senior UX Designer  
 **Date:** 2026-02-24  
 **Status:** Draft — implement alongside Sprint 4 (Presentation Layer)
@@ -251,17 +251,25 @@ Revealed enemy piece:
 
 ## 6. Animation Timing
 
-| Animation | Duration | Easing | Trigger |
-|---|---|---|---|
-| Button hover colour change | 150 ms | ease-in-out | `MOUSEMOTION` enters button rect |
-| Button press scale | 80 ms | ease-out | `MOUSEBUTTONDOWN` |
-| Piece selection highlight | Loop: 800 ms | ease-in-out (opacity pulse) | piece selected |
-| Valid move indicators appear | 120 ms | ease-out (scale from 0.5 → 1.0) | after piece selection |
-| Invalid move shake | 200 ms | ease-in-out | `InvalidMove` event |
-| AI last move highlight fade | 1500 ms | linear | after AI move applied |
-| AI thinking ellipsis | Loop: 600 ms | step (3 frames) | AI turn starts |
-| Screen transition (push/pop) | 180 ms | ease-in-out (slide from right) | `push()` / `pop()` |
-| Combat flash (both pieces) | 600 ms | ease-out | `CombatResolved` event |
+> **Source verification:** Lichess's `chessground` library uses `animation.duration: 200` ms
+> as the default for piece movement (source: `src/state.ts`, verified 2026-02-24).
+> This is the industry-standard reference for turn-based board piece animations.
+> Animations below 70 ms are imperceptible and are disabled in chessground.
+
+| Animation | Duration | Easing | Trigger | Source |
+|---|---|---|---|---|
+| Piece movement | **200 ms** | ease-out | after `MovePiece` command applied | Lichess chessground default |
+| Button hover colour change | 150 ms | ease-in-out | `MOUSEMOTION` enters button rect | — |
+| Button press scale | 80 ms | ease-out | `MOUSEBUTTONDOWN` | — |
+| Piece selection highlight | Loop: 800 ms | ease-in-out (opacity pulse) | piece selected | — |
+| Valid move indicators appear | 120 ms | ease-out (scale from 0.5 → 1.0) | after piece selection | — |
+| Invalid move shake | 200 ms | ease-in-out | `InvalidMove` event | Chess.com board shake pattern |
+| AI last move highlight fade | 1500 ms | linear | after AI move applied | — |
+| AI thinking ellipsis | Loop: 600 ms | step (3 frames) | AI turn starts | — |
+| Screen transition (push/pop) | 180 ms | ease-in-out (slide from right) | `push()` / `pop()` | — |
+| Combat flash (both pieces) | 600 ms | ease-out | `CombatResolved` event | — |
+| Drag ghost opacity | instant | — | `MOUSEBUTTONDOWN` on piece | Lichess `showGhost: true` |
+| Setup stagger (auto-arrange) | 15 ms per piece | linear | `auto_arrange()` complete | Tabletop Simulator "deal" pattern |
 
 ---
 
