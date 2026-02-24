@@ -528,7 +528,7 @@ class SetupScreen(Screen):
         state = self._controller.current_state
         for player in state.players:
             if player.side == side:
-                return player.player_type == PlayerType.HUMAN
+                return bool(player.player_type == PlayerType.HUMAN)
         return False
 
     def _auto_arrange_side(self, side: PlayerSide) -> None:
