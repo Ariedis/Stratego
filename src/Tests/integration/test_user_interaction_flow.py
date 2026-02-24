@@ -265,13 +265,13 @@ class TestStartGameBackNavigation:
 
         assert isinstance(screen_manager.current(), MainMenuScreen)
 
-    def test_start_game_screen_default_mode_is_two_player(
+    def test_start_game_screen_default_mode_is_vs_ai(
         self, screen_manager: ScreenManager, main_menu: MainMenuScreen
     ) -> None:
-        """After opening StartGameScreen the default mode is TWO_PLAYER."""
+        """After opening StartGameScreen the default mode is VS_AI."""
         main_menu._on_start_game()  # type: ignore[attr-defined]
         start_screen: StartGameScreen = screen_manager.current()  # type: ignore[assignment]
-        assert start_screen.game_mode == GAME_MODE_TWO_PLAYER
+        assert start_screen.game_mode == GAME_MODE_VS_AI
 
     def test_start_game_screen_on_exit_returns_game_mode(
         self, screen_manager: ScreenManager, main_menu: MainMenuScreen
@@ -289,26 +289,46 @@ class TestStartGameBackNavigation:
 
 
 class TestStartGameConfirmVsAI:
-    """AC-4: Selecting VS AI and clicking Confirm must push SetupScreen."""
+    """AC-4: Selecting VS AI and clicking Confirm navigates through ArmySelectScreen."""
 
-    def test_vs_ai_confirm_pushes_setup_screen(
+    def test_vs_ai_confirm_pushes_army_select_screen(
         self,
         screen_manager: ScreenManager,
         main_menu: MainMenuScreen,
         mock_game_context: MagicMock,
     ) -> None:
-        """Confirming VS AI navigates to SetupScreen via game_context.start_new_game."""
+        """Confirming VS AI pushes ArmySelectScreen (not directly SetupScreen)."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
         main_menu._on_start_game()  # type: ignore[attr-defined]
         start_screen: StartGameScreen = screen_manager.current()  # type: ignore[assignment]
 
-        # Select VS AI mode
         start_screen._select_vs_ai()  # type: ignore[attr-defined]
         assert start_screen.game_mode == GAME_MODE_VS_AI
 
-        # Confirm
         start_screen._on_confirm()  # type: ignore[attr-defined]
 
-        # game_context.start_new_game must have been called with VS_AI
+        # ArmySelectScreen must now be current
+        assert isinstance(screen_manager.current(), ArmySelectScreen)
+
+    def test_army_select_confirm_calls_start_new_game(
+        self,
+        screen_manager: ScreenManager,
+        main_menu: MainMenuScreen,
+        mock_game_context: MagicMock,
+    ) -> None:
+        """After confirming armies, game_context.start_new_game is called."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
+        main_menu._on_start_game()  # type: ignore[attr-defined]
+        start_screen: StartGameScreen = screen_manager.current()  # type: ignore[assignment]
+
+        start_screen._select_vs_ai()  # type: ignore[attr-defined]
+        start_screen._on_confirm()  # type: ignore[attr-defined]
+
+        army_screen: ArmySelectScreen = screen_manager.current()  # type: ignore[assignment]
+        army_screen._on_confirm()  # type: ignore[attr-defined]
+
         mock_game_context.start_new_game.assert_called_once()
         call_kwargs = mock_game_context.start_new_game.call_args
         assert call_kwargs.kwargs.get("game_mode") == GAME_MODE_VS_AI or (
@@ -325,12 +345,17 @@ class TestStartGameConfirmVsAI:
         mock_game_context: MagicMock,
     ) -> None:
         """Confirming VS AI must pass the selected ai_difficulty to game_context."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
         main_menu._on_start_game()  # type: ignore[attr-defined]
         start_screen: StartGameScreen = screen_manager.current()  # type: ignore[assignment]
 
         start_screen._select_vs_ai()  # type: ignore[attr-defined]
         start_screen._make_difficulty_selector(PlayerType.AI_HARD)()  # type: ignore[attr-defined]
         start_screen._on_confirm()  # type: ignore[attr-defined]
+
+        army_screen: ArmySelectScreen = screen_manager.current()  # type: ignore[assignment]
+        army_screen._on_confirm()  # type: ignore[attr-defined]
 
         call_kwargs = mock_game_context.start_new_game.call_args
         # ai_difficulty should be AI_HARD
@@ -344,12 +369,16 @@ class TestStartGameConfirmVsAI:
         mock_game_context: MagicMock,
     ) -> None:
         """Confirming TWO_PLAYER mode must pass ai_difficulty=None."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
         main_menu._on_start_game()  # type: ignore[attr-defined]
         start_screen: StartGameScreen = screen_manager.current()  # type: ignore[assignment]
 
-        # Ensure mode is TWO_PLAYER (default)
         start_screen._select_two_player()  # type: ignore[attr-defined]
         start_screen._on_confirm()  # type: ignore[attr-defined]
+
+        army_screen: ArmySelectScreen = screen_manager.current()  # type: ignore[assignment]
+        army_screen._on_confirm()  # type: ignore[attr-defined]
 
         call_kwargs = mock_game_context.start_new_game.call_args
         all_args = list(call_kwargs.args) + list(call_kwargs.kwargs.values())
@@ -783,6 +812,10 @@ class TestFullVsAiGameSession:
         start: StartGameScreen = sm.current()  # type: ignore[assignment]
         start._select_vs_ai()  # type: ignore[attr-defined]
         start._on_confirm()  # type: ignore[attr-defined]
+        # StartGameScreen now pushes ArmySelectScreen; confirm it to reach SetupScreen
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+        assert isinstance(sm.current(), ArmySelectScreen)
+        sm.current()._on_confirm()  # type: ignore[attr-defined]
         assert isinstance(sm.current(), SetupScreen)
 
         # --- Auto-arrange and click Ready (AC-5) ---
@@ -820,6 +853,10 @@ class TestFullVsAiGameSession:
         start: StartGameScreen = sm.current()  # type: ignore[assignment]
         start._select_vs_ai()  # type: ignore[attr-defined]
         start._on_confirm()  # type: ignore[attr-defined]
+        # Confirm through ArmySelectScreen to reach SetupScreen
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+        if isinstance(sm.current(), ArmySelectScreen):
+            sm.current()._on_confirm()  # type: ignore[attr-defined]
 
         setup: SetupScreen = sm.current()  # type: ignore[assignment]
         setup.auto_arrange()

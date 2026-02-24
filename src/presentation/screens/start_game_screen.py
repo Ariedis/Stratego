@@ -22,14 +22,14 @@ except ImportError:
     _QUIT = 256
     _MOUSEBUTTONDOWN = 1025
 
-# Colour palette — matches main_menu_screen.py
-_BG_COLOUR = (20, 30, 48)
-_TITLE_COLOUR = (220, 180, 80)
-_BTN_COLOUR = (50, 70, 100)
-_BTN_HOVER_COLOUR = (80, 110, 160)
-_BTN_SELECTED_COLOUR = (60, 140, 80)
-_BTN_TEXT_COLOUR = (230, 230, 230)
-_LABEL_COLOUR = (180, 200, 220)
+# Colour palette — aligned to ux-visual-style-guide.md §2
+_BG_COLOUR = (20, 30, 48)           # COLOUR_BG_MENU
+_TITLE_COLOUR = (220, 180, 80)      # COLOUR_TITLE_GOLD
+_BTN_COLOUR = (50, 70, 100)         # COLOUR_BTN_DEFAULT
+_BTN_HOVER_COLOUR = (72, 100, 144)  # COLOUR_BTN_HOVER
+_BTN_SELECTED_COLOUR = (45, 130, 70)  # COLOUR_BTN_SELECTED
+_BTN_TEXT_COLOUR = (230, 230, 230)  # COLOUR_TEXT_PRIMARY
+_LABEL_COLOUR = (160, 185, 210)     # COLOUR_SUBTITLE
 
 # Game-mode identifiers (plain strings — no new enum required)
 GAME_MODE_TWO_PLAYER = "TWO_PLAYER"
@@ -63,8 +63,8 @@ class StartGameScreen(Screen):
         self._screen_manager = screen_manager
         self._game_context = game_context
 
-        # User selections
-        self._game_mode: str = GAME_MODE_TWO_PLAYER
+        # User selections (annotation 4: default to vs Computer / Medium)
+        self._game_mode: str = GAME_MODE_VS_AI
         self._ai_difficulty: PlayerType = PlayerType.AI_MEDIUM
 
         self._font_title: Any = None
@@ -135,6 +135,12 @@ class StartGameScreen(Screen):
             title = self._font_title.render("New Game", True, _TITLE_COLOUR)
             surface.blit(title, title.get_rect(center=(w // 2, 80)))
 
+        # "Game Mode" section label
+        if self._font_medium is not None:
+            mode_label = self._font_medium.render("Game Mode", True, _LABEL_COLOUR)
+            cx = w // 2
+            surface.blit(mode_label, mode_label.get_rect(center=(cx, 148)))
+
         # Buttons
         for btn in self._buttons:
             is_selected = btn.get("selected", False)
@@ -149,15 +155,19 @@ class StartGameScreen(Screen):
 
             font = btn.get("font") or self._font_medium
             if font is not None:
-                label_surf = font.render(btn["label"], True, _BTN_TEXT_COLOUR)
+                # Prefix selected toggle buttons with a checkmark
+                label_text = btn["label"]
+                if is_selected and btn.get("is_toggle", False):
+                    label_text = f"\u2713 {label_text}"
+                label_surf = font.render(label_text, True, _BTN_TEXT_COLOUR)
                 surface.blit(label_surf, label_surf.get_rect(center=btn["rect"].center))
 
         # AI difficulty label — only when vs AI is selected
-        if self._game_mode == GAME_MODE_VS_AI and self._font_small is not None:
-            diff_label = self._font_small.render(
-                "AI Difficulty:", True, _LABEL_COLOUR
+        if self._game_mode == GAME_MODE_VS_AI and self._font_medium is not None:
+            diff_label = self._font_medium.render(
+                "AI Difficulty", True, _LABEL_COLOUR
             )
-            surface.blit(diff_label, (w // 2 - 220, 330))
+            surface.blit(diff_label, diff_label.get_rect(center=(w // 2, 298)))
 
     def handle_event(self, event: Any) -> None:
         """Process a single input event.
@@ -214,6 +224,7 @@ class StartGameScreen(Screen):
             "label": "Local 2-Player",
             "rect": _pygame.Rect(cx - mode_label_offset, mode_y, btn_w, btn_h),
             "selected": self._game_mode == GAME_MODE_TWO_PLAYER,
+            "is_toggle": True,
             "action": self._select_two_player,
             "font": self._font_medium,
         })
@@ -221,6 +232,7 @@ class StartGameScreen(Screen):
             "label": "vs Computer",
             "rect": _pygame.Rect(cx - mode_label_offset + btn_w + gap, mode_y, btn_w, btn_h),
             "selected": self._game_mode == GAME_MODE_VS_AI,
+            "is_toggle": True,
             "action": self._select_vs_ai,
             "font": self._font_medium,
         })
@@ -234,6 +246,7 @@ class StartGameScreen(Screen):
                     "label": label,
                     "rect": _pygame.Rect(x, diff_y, btn_w, btn_h),
                     "selected": self._ai_difficulty == player_type,
+                    "is_toggle": True,
                     "action": self._make_difficulty_selector(player_type),
                     "font": self._font_small or self._font_medium,
                 })
@@ -242,16 +255,18 @@ class StartGameScreen(Screen):
         nav_y = 520
         nav_btn_w = 160
         buttons.append({
-            "label": "Back",
+            "label": "\u2190 Back",
             "rect": _pygame.Rect(cx - nav_btn_w - 20, nav_y, nav_btn_w, btn_h),
             "selected": False,
+            "is_toggle": False,
             "action": self._on_back,
             "font": self._font_medium,
         })
         buttons.append({
-            "label": "Confirm",
+            "label": "Confirm \u2192",
             "rect": _pygame.Rect(cx + 20, nav_y, nav_btn_w, btn_h),
             "selected": False,
+            "is_toggle": False,
             "action": self._on_confirm,
             "font": self._font_medium,
         })
@@ -279,9 +294,13 @@ class StartGameScreen(Screen):
         self._screen_manager.pop()
 
     def _on_confirm(self) -> None:
-        """Start a new game session and navigate to the setup screen."""
-        self._game_context.start_new_game(
+        """Navigate to ArmySelectScreen to choose armies before setup."""
+        from src.presentation.screens.army_select_screen import ArmySelectScreen
+
+        army_screen = ArmySelectScreen(
+            screen_manager=self._screen_manager,
+            game_context=self._game_context,
             game_mode=self._game_mode,
             ai_difficulty=self._ai_difficulty if self._game_mode == GAME_MODE_VS_AI else None,
-            screen_manager=self._screen_manager,
         )
+        self._screen_manager.push(army_screen)

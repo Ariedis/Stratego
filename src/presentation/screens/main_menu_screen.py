@@ -23,14 +23,21 @@ except ImportError:
     _KEYDOWN = 768
     _MOUSEBUTTONDOWN = 1025
 
-# Colour palette
-_BG_COLOUR = (20, 30, 48)
-_TITLE_COLOUR = (220, 180, 80)
-_BTN_COLOUR = (50, 70, 100)
-_BTN_HOVER_COLOUR = (80, 110, 160)
-_BTN_DISABLED_COLOUR = (40, 50, 65)
-_BTN_TEXT_COLOUR = (230, 230, 230)
-_BTN_TEXT_DISABLED = (100, 100, 110)
+# Colour palette (aligned to ux-visual-style-guide.md §2)
+_BG_COLOUR = (20, 30, 48)           # COLOUR_BG_MENU
+_TITLE_COLOUR = (220, 180, 80)      # COLOUR_TITLE_GOLD
+_SUBTITLE_COLOUR = (160, 185, 210)  # COLOUR_SUBTITLE
+_DIVIDER_COLOUR = (50, 65, 95)      # COLOUR_PANEL_BORDER
+_BTN_COLOUR = (50, 70, 100)         # COLOUR_BTN_DEFAULT
+_BTN_HOVER_COLOUR = (72, 100, 144)  # COLOUR_BTN_HOVER
+_BTN_DISABLED_COLOUR = (40, 50, 65) # COLOUR_BTN_DISABLED
+_BTN_DANGER_COLOUR = (192, 57, 43)  # COLOUR_BTN_DANGER
+_BTN_TEXT_COLOUR = (230, 230, 230)  # COLOUR_TEXT_PRIMARY
+_BTN_TEXT_DISABLED = (100, 110, 125) # COLOUR_TEXT_DISABLED
+_TEXT_SECONDARY = (160, 175, 195)   # COLOUR_TEXT_SECONDARY
+
+_VERSION = "v1.0.0"
+_COPYRIGHT = "© 2026"
 
 
 class MainMenuScreen(Screen):
@@ -111,32 +118,43 @@ class MainMenuScreen(Screen):
         # Subtitle
         if self._font_small is not None:
             subtitle_surf = self._font_small.render(
-                "A Stratego-inspired strategy game", True, (160, 180, 200)
+                "A Stratego-inspired strategy game", True, _SUBTITLE_COLOUR
             )
             sub_rect = subtitle_surf.get_rect(center=(w // 2, h // 5 + 52))
             surface.blit(subtitle_surf, sub_rect)
 
-            # Divider below subtitle (H8.4)
+            # Divider below subtitle
             divider_y = sub_rect.bottom + 18
             divider_x0 = w // 2 - 200
             divider_x1 = w // 2 + 200
             _pygame.draw.line(
-                surface, (74, 103, 65), (divider_x0, divider_y), (divider_x1, divider_y), 1
+                surface, _DIVIDER_COLOUR, (divider_x0, divider_y), (divider_x1, divider_y), 1
             )
 
         # Buttons
         for btn in self._buttons:
-            colour = _BTN_DISABLED_COLOUR if btn["disabled"] else (
-                _BTN_HOVER_COLOUR
-                if btn["rect"].collidepoint(self._mouse_pos)
-                else _BTN_COLOUR
-            )
+            is_danger = btn.get("danger", False)
+            if btn["disabled"]:
+                colour = _BTN_DISABLED_COLOUR
+            elif btn["rect"].collidepoint(self._mouse_pos):
+                colour = _BTN_HOVER_COLOUR
+            elif is_danger:
+                colour = _BTN_DANGER_COLOUR
+            else:
+                colour = _BTN_COLOUR
             _pygame.draw.rect(surface, colour, btn["rect"], border_radius=8)
             text_colour = _BTN_TEXT_DISABLED if btn["disabled"] else _BTN_TEXT_COLOUR
             if self._font_medium is not None:
                 label = self._font_medium.render(btn["label"], True, text_colour)
                 label_rect = label.get_rect(center=btn["rect"].center)
                 surface.blit(label, label_rect)
+
+        # Footer: version and copyright
+        if self._font_small is not None:
+            version_surf = self._font_small.render(_VERSION, True, _TEXT_SECONDARY)
+            surface.blit(version_surf, (16, h - 28))
+            copy_surf = self._font_small.render(_COPYRIGHT, True, _TEXT_SECONDARY)
+            surface.blit(copy_surf, copy_surf.get_rect(right=w - 16, bottom=h - 8))
 
     def handle_event(self, event: Any) -> None:
         """Process a single input event.
@@ -189,35 +207,51 @@ class MainMenuScreen(Screen):
             y = start_y + index * gap
             return _pygame.Rect(x, y, btn_w, btn_h)
 
+        # Check whether a save file exists to enable / disable Continue.
+        continue_disabled = True
+        continue_action: Any = lambda: None  # noqa: E731
+        try:
+            most_recent = self._game_context.repository.get_most_recent_save()
+            if most_recent is not None:
+                continue_disabled = False
+                continue_action = lambda: self._on_continue(most_recent)  # noqa: E731
+        except Exception:  # noqa: BLE001
+            pass
+
         return [
             {
                 "label": "Start Game",
                 "rect": _rect(0),
                 "disabled": False,
+                "danger": False,
                 "action": self._on_start_game,
             },
             {
                 "label": "Continue",
                 "rect": _rect(1),
-                "disabled": True,  # Greyed out until save files exist
-                "action": lambda: None,
+                "disabled": continue_disabled,
+                "danger": False,
+                "action": continue_action,
             },
             {
                 "label": "Load Game",
                 "rect": _rect(2),
-                "disabled": True,  # Stub — not yet implemented
-                "action": lambda: None,
+                "disabled": False,
+                "danger": False,
+                "action": self._on_load_game,
             },
             {
-                "label": "Settings",
+                "label": "Settings \u2699",
                 "rect": _rect(3),
-                "disabled": True,  # Stub — not yet implemented
-                "action": lambda: None,
+                "disabled": False,
+                "danger": False,
+                "action": self._on_settings,
             },
             {
-                "label": "Quit",
+                "label": "Quit \u2715",
                 "rect": _rect(4),
                 "disabled": False,
+                "danger": True,
                 "action": self._quit,
             },
         ]
@@ -231,6 +265,38 @@ class MainMenuScreen(Screen):
             game_context=self._game_context,
         )
         self._screen_manager.push(start_screen)
+
+    def _on_continue(self, save: Any) -> None:
+        """Resume the most recent saved game.
+
+        Args:
+            save: The save-file object from the repository.
+        """
+        try:
+            game_state = self._game_context.repository.load(save)
+            self._game_context.resume_from_state(game_state, self._screen_manager)
+        except Exception:  # noqa: BLE001
+            pass  # Silently ignore if resuming is not yet implemented.
+
+    def _on_load_game(self) -> None:
+        """Open the Load Game screen."""
+        from src.presentation.screens.load_game_screen import LoadGameScreen
+
+        load_screen = LoadGameScreen(
+            screen_manager=self._screen_manager,
+            game_context=self._game_context,
+        )
+        self._screen_manager.push(load_screen)
+
+    def _on_settings(self) -> None:
+        """Open the Settings screen."""
+        from src.presentation.screens.settings_screen import SettingsScreen
+
+        settings_screen = SettingsScreen(
+            screen_manager=self._screen_manager,
+            game_context=self._game_context,
+        )
+        self._screen_manager.push(settings_screen)
 
     def _quit(self) -> None:
         """Post a QUIT event to end the application gracefully."""
