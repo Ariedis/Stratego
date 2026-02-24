@@ -149,7 +149,6 @@ class ArmySelectScreen(Screen):
             return
 
         w: int = surface.get_width()
-        h: int = surface.get_height()
         surface.fill(_BG_COLOUR)
 
         # Screen title

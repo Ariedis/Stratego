@@ -143,7 +143,7 @@ class SettingsScreen(Screen):
             self._undo_enabled = getattr(cfg, "undo_enabled", _DEFAULT_UNDO_ENABLED)
             self._reduce_motion = getattr(cfg, "reduce_motion", _DEFAULT_REDUCE_MOTION)
             self._colour_blind = getattr(cfg, "colour_blind", _DEFAULT_COLOUR_BLIND)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass
 
         if _pygame is None:
@@ -174,7 +174,6 @@ class SettingsScreen(Screen):
             return
 
         w: int = surface.get_width()
-        h: int = surface.get_height()
         surface.fill(_BG_COLOUR)
 
         # Title
@@ -318,7 +317,7 @@ class SettingsScreen(Screen):
         try:
             self._game_context.config.display.fullscreen = self._fullscreen
             self._game_context.config.display.fps_cap = self._fps_cap
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass
         self._screen_manager.pop()
 

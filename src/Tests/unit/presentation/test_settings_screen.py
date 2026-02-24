@@ -13,12 +13,12 @@ import pytest
 
 try:
     from src.presentation.screens.settings_screen import (
-        SettingsScreen,
         _DEFAULT_FPS_CAP,
         _DEFAULT_FULLSCREEN,
         _DEFAULT_MUSIC_ENABLED,
         _DEFAULT_SFX_ENABLED,
         _DEFAULT_UNDO_ENABLED,
+        SettingsScreen,
     )
 except ImportError:
     SettingsScreen = None  # type: ignore[assignment, misc]

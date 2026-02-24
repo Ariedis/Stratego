@@ -99,7 +99,7 @@ class LoadGameScreen(Screen):
         self._saves = []
         try:
             self._saves = list(self._game_context.repository.list_saves())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass
 
         if _pygame is None:
@@ -316,7 +316,7 @@ class LoadGameScreen(Screen):
         try:
             game_state = self._game_context.repository.load(save)
             self._game_context.resume_from_state(game_state, self._screen_manager)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass  # Error handling deferred to future sprint.
 
     def _on_delete(self) -> None:
@@ -328,7 +328,7 @@ class LoadGameScreen(Screen):
             self._game_context.repository.delete(save)
             self._saves.pop(self._selected_index)
             self._selected_index = -1
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass
 
     def _on_start_new_game(self) -> None:

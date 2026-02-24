@@ -215,7 +215,7 @@ class MainMenuScreen(Screen):
             if most_recent is not None:
                 continue_disabled = False
                 continue_action = lambda: self._on_continue(most_recent)  # noqa: E731
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass
 
         return [
@@ -275,7 +275,7 @@ class MainMenuScreen(Screen):
         try:
             game_state = self._game_context.repository.load(save)
             self._game_context.resume_from_state(game_state, self._screen_manager)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001,S110
             pass  # Silently ignore if resuming is not yet implemented.
 
     def _on_load_game(self) -> None:
