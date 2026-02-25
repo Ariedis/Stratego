@@ -125,14 +125,19 @@ _USER_AGENT = (
     "Mozilla/5.0 (compatible; StrategoAssetDownloader/1.0; "
     "+https://github.com/Ariedis/Stratego)"
 )
-_MAX_RETRIES = 3
-_RETRY_DELAY = 2.0  # seconds between retries
+_MAX_RETRIES = 5
+_RETRY_DELAY = 2.0        # seconds between retries for 5xx / timeout
+_RATE_LIMIT_DELAY = 15.0  # seconds to back off when a 429 is received
+_INTER_REQUEST_DELAY = 1.5  # polite delay between every successful request
 
 
 def _download(url: str, dest: Path) -> bool:
     """Download *url* to *dest*; return True on success, False on failure.
 
-    Retries up to ``_MAX_RETRIES`` times on transient errors (5xx, timeouts).
+    Retries up to ``_MAX_RETRIES`` times on transient errors (5xx, timeouts)
+    and on HTTP 429 (Too Many Requests) with an extended back-off.
+    A 1.5-second inter-request delay is applied by the caller to stay below
+    Wikimedia's rate limit before this function is even called.
     """
     for attempt in range(1, _MAX_RETRIES + 1):
         req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
@@ -152,7 +157,16 @@ def _download(url: str, dest: Path) -> bool:
                 f"    ✗  HTTP {exc.code} {exc.reason} (attempt {attempt}/{_MAX_RETRIES})",
                 file=sys.stderr,
             )
-            if exc.code < 500:  # 4xx errors will not recover on retry
+            if exc.code == 429:
+                # Rate-limited: back off for a longer period and retry.
+                if attempt < _MAX_RETRIES:
+                    print(
+                        f"    ... rate-limited, waiting {_RATE_LIMIT_DELAY:.0f}s before retry ...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(_RATE_LIMIT_DELAY)
+                continue
+            if exc.code < 500:  # other 4xx errors will not recover on retry
                 return False
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print(
@@ -299,6 +313,7 @@ def main() -> None:
             ok_count += 1
         else:
             fail_count += 1
+        time.sleep(_INTER_REQUEST_DELAY)
 
         # Blue piece
         blue_dest = blue_dir / f"{rank_name}.png"
@@ -308,6 +323,7 @@ def main() -> None:
             ok_count += 1
         else:
             fail_count += 1
+        time.sleep(_INTER_REQUEST_DELAY)
 
     # ---- Board tiles — generated with pure Python (no pygame required) -------
     print()
