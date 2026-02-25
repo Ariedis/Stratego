@@ -158,6 +158,7 @@ class _GameContext:
         turn_manager_proxy: _TurnManagerProxy,
         renderer_adapter: Any,
         asset_dir: Path,
+        config: Config | None = None,
     ) -> None:
         """Initialise the context with an existing controller.
 
@@ -170,11 +171,15 @@ class _GameContext:
                 ``PlayingScreen`` to draw the board.
             asset_dir: Path to the assets directory (used if the renderer
                 needs to be recreated — reserved for future use).
+            config: The application ``Config``; used by the settings screen to
+                read and persist display preferences.  Defaults to a fresh
+                ``Config()`` when ``None``.
         """
         self._controller: Any = initial_controller
         self._turn_manager_proxy = turn_manager_proxy
         self._renderer_adapter: Any = renderer_adapter
         self._asset_dir = asset_dir
+        self.config: Config = config if config is not None else Config()
 
     # Expose current_state so GameLoop can call self._controller.current_state.
     @property
@@ -315,6 +320,7 @@ def _launch_pygame(config: Config, initial_state: GameState) -> None:
         turn_manager_proxy=turn_manager_proxy,
         renderer_adapter=renderer_adapter,
         asset_dir=asset_dir,
+        config=config,
     )
 
     # Start at the Main Menu (screen_flow.md §2).
