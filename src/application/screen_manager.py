@@ -82,6 +82,11 @@ class ScreenManager:
     # Accessors
     # ------------------------------------------------------------------
 
+    @property
+    def stack(self) -> list[Screen]:
+        """Return a read-only view of the screen stack (bottom → top)."""
+        return self._stack
+
     def current(self) -> Screen:
         """Return the top-of-stack (currently active) screen.
 

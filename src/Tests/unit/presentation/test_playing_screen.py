@@ -279,6 +279,70 @@ class TestPlayingScreenDomainEvents:
         )
         assert playing_screen._selected_pos is None  # type: ignore[union-attr]
 
+    def test_on_piece_moved_updates_last_move_text(self, playing_screen: object) -> None:
+        from src.application.events import PieceMoved
+        from src.domain.enums import Rank
+
+        piece = Piece(
+            rank=Rank.SERGEANT,
+            owner=PlayerSide.RED,
+            revealed=True,
+            has_moved=True,
+            position=Position(6, 3),
+        )
+        playing_screen._on_piece_moved(  # type: ignore[union-attr]
+            PieceMoved(from_pos=Position(6, 3), to_pos=Position(5, 3), piece=piece)
+        )
+        last = playing_screen._last_move_text  # type: ignore[union-attr]
+        assert "RED" in last or "red" in last.lower()
+        assert "→" in last
+
+    def test_on_combat_resolved_tracks_captured_by_red(self, playing_screen: object) -> None:
+        from src.application.events import CombatResolved
+        from src.domain.enums import Rank
+
+        attacker = Piece(
+            rank=Rank.MARSHAL,
+            owner=PlayerSide.RED,
+            revealed=True,
+            has_moved=True,
+            position=Position(0, 0),
+        )
+        defender = Piece(
+            rank=Rank.GENERAL,
+            owner=PlayerSide.BLUE,
+            revealed=True,
+            has_moved=False,
+            position=Position(0, 1),
+        )
+        playing_screen._on_combat_resolved(  # type: ignore[union-attr]
+            CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.RED)
+        )
+        assert "Ge" in playing_screen._captured_by_red  # type: ignore[union-attr]
+
+    def test_on_combat_resolved_tracks_captured_by_blue(self, playing_screen: object) -> None:
+        from src.application.events import CombatResolved
+        from src.domain.enums import Rank
+
+        attacker = Piece(
+            rank=Rank.COLONEL,
+            owner=PlayerSide.RED,
+            revealed=True,
+            has_moved=True,
+            position=Position(0, 0),
+        )
+        defender = Piece(
+            rank=Rank.GENERAL,
+            owner=PlayerSide.BLUE,
+            revealed=True,
+            has_moved=False,
+            position=Position(0, 1),
+        )
+        playing_screen._on_combat_resolved(  # type: ignore[union-attr]
+            CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)
+        )
+        assert "Co" in playing_screen._captured_by_blue  # type: ignore[union-attr]
+
     def test_on_invalid_move_sets_flash(self, playing_screen: object) -> None:
         from src.application.events import InvalidMove
         from src.domain.enums import MoveType
@@ -308,3 +372,74 @@ class TestPlayingScreenDomainEvents:
         playing_screen._selected_pos = Position(5, 5)  # type: ignore[union-attr]
         playing_screen._on_turn_changed(TurnChanged(active_player=PlayerSide.BLUE))  # type: ignore[union-attr]
         assert playing_screen._selected_pos is None  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Quit-to-menu stack clearing
+# ---------------------------------------------------------------------------
+
+
+class TestQuitToMenu:
+    """Tests for _on_quit_to_menu using the public stack property."""
+
+    def test_quit_pops_all_screens_above_root(
+        self,
+        mock_controller: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        """_on_quit_to_menu() should pop until only the root screen remains."""
+        from src.application.screen_manager import ScreenManager
+        from src.presentation.screens.base import Screen
+
+        class _Stub(Screen):
+            def on_enter(self, data: dict) -> None: ...  # type: ignore[override]
+            def on_exit(self) -> dict: return {}
+            def render(self, surface: object) -> None: ...
+            def handle_event(self, event: object) -> None: ...
+            def update(self, dt: float) -> None: ...
+
+        sm = ScreenManager()
+        root = _Stub()
+        sm.push(root)
+        sm.push(_Stub())
+        sm.push(_Stub())
+
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=sm,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+        )
+        screen.on_enter({})
+        screen._on_quit_to_menu()  # type: ignore[union-attr]
+        assert len(sm.stack) == 1
+        assert sm.stack[0] is root
+
+
+# ---------------------------------------------------------------------------
+# Undo button
+# ---------------------------------------------------------------------------
+
+
+class TestUndoButton:
+    """Tests for the Undo button feature."""
+
+    def test_undo_enabled_exposes_attribute(
+        self,
+        mock_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=mock_screen_manager,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+            undo_enabled=True,
+        )
+        assert screen._undo_enabled is True  # type: ignore[union-attr]
+
+    def test_undo_disabled_by_default(self, playing_screen: object) -> None:
+        assert playing_screen._undo_enabled is False  # type: ignore[union-attr]
