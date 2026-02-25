@@ -42,6 +42,38 @@ _BTN_TEXT_DISABLED = (100, 110, 125)
 _SETUP_ZONE_BORDER_COLOUR = (220, 180, 80)  # COLOUR_TITLE_GOLD — setup zone guide
 _TEAM_RED_COLOUR = (200, 60, 60)    # COLOUR_TEAM_RED
 _TEAM_BLUE_COLOUR = (60, 110, 210)  # COLOUR_TEAM_BLUE
+_COLOUR_SELECT = (80, 160, 80)      # COLOUR_SELECT — highlighted tray row
+_COLOUR_INVALID = (200, 60, 60)     # invalid placement flash
+_COLOUR_TRAY_ROW = (35, 52, 80)     # default tray row background
+_COLOUR_SURFACE = (40, 58, 88)      # handover overlay card background
+_COLOUR_DEPLETED = (120, 40, 40)    # count badge when rank exhausted
+
+# Piece tray display order (Marshal → Flag, matching the wireframe)
+_TRAY_ORDER: list[Rank] = [
+    Rank.MARSHAL, Rank.GENERAL, Rank.COLONEL, Rank.MAJOR,
+    Rank.CAPTAIN, Rank.LIEUTENANT, Rank.SERGEANT, Rank.MINER,
+    Rank.SCOUT, Rank.SPY, Rank.BOMB, Rank.FLAG,
+]
+
+_RANK_NAMES: dict[Rank, str] = {
+    Rank.MARSHAL: "Marshal",
+    Rank.GENERAL: "General",
+    Rank.COLONEL: "Colonel",
+    Rank.MAJOR: "Major",
+    Rank.CAPTAIN: "Captain",
+    Rank.LIEUTENANT: "Lieutenant",
+    Rank.SERGEANT: "Sergeant",
+    Rank.MINER: "Miner",
+    Rank.SCOUT: "Scout",
+    Rank.SPY: "Spy",
+    Rank.BOMB: "Bomb",
+    Rank.FLAG: "Flag",
+}
+
+# Duration (seconds) of the invalid-cell flash highlight.
+_FLASH_DURATION: float = 0.5
+# Height (px) of each tray row in the side panel.
+_TRAY_ROW_H: int = 20
 
 # Layout constants — board occupies the left 80 % of the window.
 _BOARD_FRACTION: float = 0.80
@@ -116,6 +148,15 @@ class SetupScreen(Screen):
         self._font: Any = None
         self._font_small: Any = None
         self._mouse_pos: tuple[int, int] = (0, 0)
+        # Tray selection: which rank is the "next to place".
+        self._selected_rank: Rank | None = None
+        # Cells currently flashing COLOUR_INVALID (row, col) → remaining seconds.
+        self._invalid_flash_cells: dict[tuple[int, int], float] = {}
+        # Remaining duration of the "Place pieces in your setup zone" error label.
+        self._error_label_timer: float = 0.0
+        # Handover overlay shown between player 1 ready and player 2 setup.
+        self._show_handover_overlay: bool = False
+        self._pending_handover_screen: SetupScreen | None = None
 
     # ------------------------------------------------------------------
     # Screen lifecycle
@@ -148,6 +189,11 @@ class SetupScreen(Screen):
         ]
         self._placed_pieces = []
         self._occupied_positions = set()
+        self._selected_rank = None
+        self._invalid_flash_cells = {}
+        self._error_label_timer = 0.0
+        self._show_handover_overlay = False
+        self._pending_handover_screen = None
 
         if _pygame is None:
             return
@@ -198,6 +244,22 @@ class SetupScreen(Screen):
                 3,
             )
 
+        # Invalid-cell flash overlays drawn on top of the board.
+        if self._invalid_flash_cells and board_w > 0 and h > 0:
+            cell_w_board = board_w // _BOARD_COLS
+            cell_h_board = h // _BOARD_ROWS
+            flash_surf = _pygame.Surface((cell_w_board, cell_h_board), _pygame.SRCALPHA)
+            flash_surf.fill((*_COLOUR_INVALID, 160))
+            for (r, c) in list(self._invalid_flash_cells):
+                surface.blit(flash_surf, (c * cell_w_board, r * cell_h_board))
+
+        # Error label for out-of-zone clicks.
+        if self._error_label_timer > 0 and self._font_small is not None:
+            err_lbl = self._font_small.render(
+                "Place pieces in your setup zone", True, _COLOUR_INVALID
+            )
+            surface.blit(err_lbl, err_lbl.get_rect(centerx=board_w // 2, top=4))
+
         # Side panel.
         panel_x = int(w * _BOARD_FRACTION)
         panel_w = w - panel_x
@@ -219,22 +281,44 @@ class SetupScreen(Screen):
             player_label = self._font.render(player_label_text, True, player_colour)
             surface.blit(player_label, player_label.get_rect(center=(cx, 58)))
 
-            remaining = self._font.render(
-                f"Pieces left: {len(self._piece_tray)}", True, _TEXT_COLOUR
-            )
-            surface.blit(remaining, remaining.get_rect(center=(cx, 90)))
+        # Rank-grouped piece tray (wireframe annotation 3).
+        if self._font_small is not None:
+            tray_header = self._font_small.render("Remaining Pieces", True, _TEXT_COLOUR)
+            surface.blit(tray_header, tray_header.get_rect(center=(cx, 88)))
 
-        # Buttons in the panel.
+            tray_rects = self._get_tray_row_rects(panel_x, panel_w)
+            from collections import Counter
+            counts: Counter[Rank] = Counter(p.rank for p in self._piece_tray)
+            for rank, rect in zip(_TRAY_ORDER, tray_rects):
+                count = counts.get(rank, 0)
+                is_selected = rank == self._selected_rank
+                is_depleted = count == 0
+                bg_colour = _COLOUR_SELECT if is_selected else _COLOUR_TRAY_ROW
+                _pygame.draw.rect(surface, bg_colour, rect, border_radius=4)
+
+                rank_text = _RANK_NAMES.get(rank, rank.name.title())
+                txt_colour = _BTN_TEXT_DISABLED if is_depleted else _TEXT_COLOUR
+                name_surf = self._font_small.render(rank_text, True, txt_colour)
+                surface.blit(name_surf, name_surf.get_rect(midleft=(rect.x + 6, rect.centery)))
+
+                count_colour = _COLOUR_DEPLETED if is_depleted else _TEXT_COLOUR
+                count_surf = self._font_small.render(f"({count})", True, count_colour)
+                surface.blit(
+                    count_surf, count_surf.get_rect(midright=(rect.right - 6, rect.centery))
+                )
+
+        # Buttons in the panel — anchored near the bottom.
         btn_w, btn_h = 160, 40
         btn_x = cx - btn_w // 2
-
-        buttons = [
-            ("Auto [A]", 150, False, _BTN_COLOUR, self.auto_arrange),
-            ("Clear [C]", 200, False, _BTN_COLOUR, self.clear),
-            ("Abandon [Q]", 250, False, _BTN_DANGER_COLOUR, self._on_abandon),
-            ("Ready [R]", 310, not self.is_ready, _BTN_READY_COLOUR, self._on_ready),
+        btn_y_auto = h - 220
+        # (label, y, disabled, colour)
+        btn_specs = [
+            ("Auto [A]",    btn_y_auto,       False,             _BTN_COLOUR),
+            ("Clear [C]",   btn_y_auto + 50,  False,             _BTN_COLOUR),
+            ("Abandon [Q]", btn_y_auto + 100, False,             _BTN_DANGER_COLOUR),
+            ("Ready [R]",   btn_y_auto + 160, not self.is_ready, _BTN_READY_COLOUR),
         ]
-        for label, y, disabled, btn_colour, _ in buttons:
+        for label, y, disabled, btn_colour in btn_specs:
             colour = _BTN_DISABLED_COLOUR if disabled else btn_colour
             rect = _pygame.Rect(btn_x, y, btn_w, btn_h)
             _pygame.draw.rect(surface, colour, rect, border_radius=8)
@@ -244,13 +328,52 @@ class SetupScreen(Screen):
                 lbl = font.render(label, True, text_colour)
                 surface.blit(lbl, lbl.get_rect(center=rect.center))
 
+        # Handover overlay — full-screen opaque scrim + centred card.
+        if self._show_handover_overlay:
+            scrim = _pygame.Surface((w, h))
+            scrim.fill((0, 0, 0))
+            scrim.set_alpha(230)
+            surface.blit(scrim, (0, 0))
+
+            card_w, card_h = min(680, w - 80), 220
+            card_x = (w - card_w) // 2
+            card_y = (h - card_h) // 2
+            _pygame.draw.rect(
+                surface, _COLOUR_SURFACE,
+                _pygame.Rect(card_x, card_y, card_w, card_h),
+                border_radius=12,
+            )
+
+            font_heading = self._font or self._font_small
+            font_body = self._font_small or self._font
+            if font_heading is not None:
+                line1 = font_heading.render(
+                    "Player 1 has finished army setup.", True, _TEXT_COLOUR
+                )
+                surface.blit(line1, line1.get_rect(center=(w // 2, card_y + 60)))
+            if font_body is not None:
+                line2 = font_body.render(
+                    "Please pass the device to Player 2.", True, _TEXT_COLOUR
+                )
+                surface.blit(line2, line2.get_rect(center=(w // 2, card_y + 110)))
+                line3 = font_body.render(
+                    "Player 2: press any key or click to continue.", True, _TEXT_COLOUR
+                )
+                surface.blit(line3, line3.get_rect(center=(w // 2, card_y + 155)))
+
     def handle_event(self, event: Any) -> None:
         """Handle input events.
 
         Keyboard shortcuts: A = auto-arrange, C = clear, R = ready (if set),
-        Q = abandon setup and return to main menu.
+        Q = abandon setup and return to main menu.  Tab / ↑ / ↓ navigate the
+        tray.
 
         Mouse: left-click on the side-panel buttons triggers the same actions.
+        Clicking a tray row selects that piece type as "next to place".
+        Clicking a board cell places the selected piece type.
+
+        When the handover overlay is visible, any key press or mouse click
+        dismisses it and proceeds to Player 2's setup screen.
 
         Args:
             event: A pygame event (or ``None`` in headless mode).
@@ -265,6 +388,12 @@ class SetupScreen(Screen):
             _pygame.event.post(_pygame.event.Event(_pygame.QUIT))
             return
 
+        # Handover overlay: consume all events until dismissed.
+        if self._show_handover_overlay:
+            if event.type in (_KEYDOWN, _MOUSEBUTTONDOWN):
+                self._dismiss_handover_overlay()
+            return
+
         if event.type == _KEYDOWN:
             key = event.key
             if key == _pygame.K_a:
@@ -275,17 +404,28 @@ class SetupScreen(Screen):
                 self._on_ready()
             elif key == _pygame.K_q:
                 self._on_abandon()
+            elif key in (_pygame.K_TAB, _pygame.K_DOWN):
+                self._cycle_tray_selection(1)
+            elif key == _pygame.K_UP:
+                self._cycle_tray_selection(-1)
             return
 
         if event.type == _MOUSEBUTTONDOWN and event.button == 1:
             self._handle_mouse_click(event.pos)
 
     def update(self, delta_time: float) -> None:
-        """Advance per-frame logic (no-op for setup screen).
+        """Advance per-frame logic — tick down invalid-cell flash timers.
 
         Args:
             delta_time: Elapsed time since the previous frame, in seconds.
         """
+        expired = [k for k, t in self._invalid_flash_cells.items() if t <= 0]
+        for k in expired:
+            del self._invalid_flash_cells[k]
+        for k in list(self._invalid_flash_cells):
+            self._invalid_flash_cells[k] -= delta_time
+        if self._error_label_timer > 0:
+            self._error_label_timer -= delta_time
 
     # ------------------------------------------------------------------
     # Tray / placement API (used by tests and the UI layer)
@@ -414,7 +554,12 @@ class SetupScreen(Screen):
     # ------------------------------------------------------------------
 
     def _on_ready(self) -> None:
-        """Transition to ``PlayingScreen`` when all pieces are placed.
+        """Transition to the next phase when all pieces are placed.
+
+        In 2-player mode, shows the full-screen handover overlay so Player 1's
+        arrangement is hidden while the device is passed to Player 2.  The
+        actual screen transition happens when the overlay is dismissed
+        (any key or click).
 
         Requires ``event_bus`` and ``renderer`` to have been supplied at
         construction time or via ``on_enter(data)``.  If either is ``None``
@@ -434,8 +579,7 @@ class SetupScreen(Screen):
         if self._is_ai_side(opponent_side) and self._player_piece_count(opponent_side) == 0:
             self._auto_arrange_side(opponent_side)
 
-        # Two-player: hand off to the opponent's setup screen if they have not
-        # completed setup yet.
+        # Two-player: show handover overlay, then go to the opponent's setup.
         if (
             self._is_human_side(opponent_side)
             and self._player_piece_count(opponent_side) < len(self._army)
@@ -449,7 +593,8 @@ class SetupScreen(Screen):
                 renderer=self._renderer,
                 viewing_player=opponent_side,
             )
-            self._screen_manager.replace(next_setup)
+            self._pending_handover_screen = next_setup
+            self._show_handover_overlay = True
             return
 
         # Both sides are now set up — switch to PLAYING phase before entering
@@ -482,8 +627,11 @@ class SetupScreen(Screen):
     def _handle_mouse_click(self, pixel_pos: tuple[int, int]) -> None:
         """Handle a left mouse-button click in the setup screen.
 
-        Clicks in the side panel activate the Auto-arrange, Clear, and Ready
-        buttons.
+        - Board area: places the selected/next tray piece on the clicked cell;
+          flashes the cell ``COLOUR_INVALID`` if the click is outside the
+          player's setup zone (annotation 4).
+        - Tray rows: selects that rank as "next to place".
+        - Side-panel buttons: trigger Auto-arrange, Clear, Abandon, or Ready.
 
         Args:
             pixel_pos: The (x, y) pixel coordinates of the click.
@@ -506,32 +654,124 @@ class SetupScreen(Screen):
         cell_w = board_w // _BOARD_COLS
         cell_h = h // _BOARD_ROWS
 
-        # Board click: place the next tray piece on the clicked setup square.
+        # Board click: attempt to place the selected/next tray piece.
         px, py = pixel_pos
         if px < board_w and cell_w > 0 and cell_h > 0:
             col = min(px // cell_w, _BOARD_COLS - 1)
             row = min(py // cell_h, _BOARD_ROWS - 1)
             if self._piece_tray:
-                self.place_piece(self._piece_tray[0], Position(row, col))
+                piece = self._find_tray_piece()
+                if piece is not None:
+                    placed = self.place_piece(piece, Position(row, col))
+                    if not placed:
+                        # Flash the invalid cell (annotation 4).
+                        self._invalid_flash_cells[(row, col)] = _FLASH_DURATION
+                        self._error_label_timer = _FLASH_DURATION
             return
 
         panel_x = int(w * _BOARD_FRACTION)
         panel_w = w - panel_x
         cx = panel_x + panel_w // 2
-        btn_w, btn_h = 160, 40
-        btn_x = cx - btn_w // 2
+        btn_w_size, btn_h_size = 160, 40
+        btn_x = cx - btn_w_size // 2
 
+        # Tray row clicks: select a rank.
+        tray_rects = self._get_tray_row_rects(panel_x, panel_w)
+        for rank, rect in zip(_TRAY_ORDER, tray_rects):
+            if rect.collidepoint(pixel_pos):
+                # Toggle off if already selected; otherwise select the new rank.
+                from collections import Counter
+                counts: Counter[Rank] = Counter(p.rank for p in self._piece_tray)
+                if counts.get(rank, 0) > 0:
+                    self._selected_rank = rank
+                return
+
+        btn_y_auto = h - 220
         button_rects = [
-            (btn_x, 150, btn_w, btn_h, self.auto_arrange),
-            (btn_x, 200, btn_w, btn_h, self.clear),
-            (btn_x, 250, btn_w, btn_h, self._on_abandon),
-            (btn_x, 310, btn_w, btn_h, self._on_ready),
+            (btn_x, btn_y_auto,       btn_w_size, btn_h_size, self.auto_arrange),
+            (btn_x, btn_y_auto + 50,  btn_w_size, btn_h_size, self.clear),
+            (btn_x, btn_y_auto + 100, btn_w_size, btn_h_size, self._on_abandon),
+            (btn_x, btn_y_auto + 160, btn_w_size, btn_h_size, self._on_ready),
         ]
         for bx, by, bw, bh, action in button_rects:
             rect = _pygame.Rect(bx, by, bw, bh)
             if rect.collidepoint(pixel_pos):
                 action()
                 return
+
+    def _dismiss_handover_overlay(self) -> None:
+        """Hide the handover overlay and perform the pending screen transition."""
+        self._show_handover_overlay = False
+        pending = self._pending_handover_screen
+        self._pending_handover_screen = None
+        if pending is not None:
+            self._screen_manager.replace(pending)
+
+    def _find_tray_piece(self) -> Piece | None:
+        """Return the next piece to place, respecting the current tray selection.
+
+        Returns the first piece in the tray whose rank matches
+        ``_selected_rank``, or the first piece overall if no rank is selected
+        or the selected rank is exhausted.
+
+        Returns:
+            A ``Piece`` from the tray, or ``None`` if the tray is empty.
+        """
+        if not self._piece_tray:
+            return None
+        if self._selected_rank is not None:
+            for p in self._piece_tray:
+                if p.rank == self._selected_rank:
+                    return p
+        return self._piece_tray[0]
+
+    def _cycle_tray_selection(self, direction: int) -> None:
+        """Advance the tray selection forward or backward among available ranks.
+
+        Only ranks that still have at least one piece in the tray are cycled
+        through.
+
+        Args:
+            direction: ``+1`` to advance forwards (Tab / ↓), ``-1`` for ↑.
+        """
+        available = [r for r in _TRAY_ORDER if any(p.rank == r for p in self._piece_tray)]
+        if not available:
+            return
+        if self._selected_rank not in available:
+            self._selected_rank = available[0]
+            return
+        idx = available.index(self._selected_rank)
+        self._selected_rank = available[(idx + direction) % len(available)]
+
+    def _get_tray_row_rects(self, panel_x: int, panel_w: int) -> list[Any]:
+        """Return a list of pygame.Rect objects for each tray row.
+
+        Rows are ordered to match ``_TRAY_ORDER``.  The rects are used for
+        both rendering and mouse-hit detection.
+
+        Args:
+            panel_x: Left edge of the side panel in screen pixels.
+            panel_w: Width of the side panel in pixels.
+
+        Returns:
+            A list of 12 ``pygame.Rect`` objects.
+        """
+        if _pygame is None:
+            return []
+        margin = 6
+        row_w = panel_w - margin * 2
+        tray_y_start = 102
+        rects = []
+        for i in range(len(_TRAY_ORDER)):
+            rects.append(
+                _pygame.Rect(
+                    panel_x + margin,
+                    tray_y_start + i * _TRAY_ROW_H,
+                    row_w,
+                    _TRAY_ROW_H - 2,
+                )
+            )
+        return rects
 
     def _player_piece_count(self, side: PlayerSide) -> int:
         """Return the number of placed pieces for *side* in current state."""
