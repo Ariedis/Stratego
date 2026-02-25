@@ -38,6 +38,13 @@ try:
 except ImportError:  # pragma: no cover
     _PYGAME_AVAILABLE = False
 
+# Team tint colours applied to generic piece images (ux-visual-style-guide.md §2.5).
+# Multiplicative RGB blending (BLEND_RGB_MULT) colours a neutral-grey master image.
+_TEAM_TINT_COLOURS: dict[PlayerSide, tuple[int, int, int]] = {
+    PlayerSide.RED: (200, 60, 60),    # COLOUR_TEAM_RED  #C83C3C
+    PlayerSide.BLUE: (60, 110, 210),  # COLOUR_TEAM_BLUE #3C6ED2
+}
+
 # Solid-colour placeholders used when real asset images are not found.
 _RANK_COLOURS: dict[Rank, tuple[int, int, int]] = {
     Rank.FLAG: (255, 215, 0),
@@ -66,6 +73,21 @@ class _MockSurface:
 
     def get_height(self) -> int:  # noqa: D102
         return 64
+
+    def copy(self) -> _MockSurface:
+        """Return a shallow copy of this surface."""
+        return _MockSurface(self._colour)
+
+    def fill(self, colour: tuple[int, int, int], special_flags: int = 0) -> None:
+        """Fill the surface; simulates BLEND_RGB_MULT when *special_flags* is non-zero."""
+        if special_flags:
+            self._colour = (
+                min(255, (self._colour[0] * colour[0]) // 255),
+                min(255, (self._colour[1] * colour[1]) // 255),
+                min(255, (self._colour[2] * colour[2]) // 255),
+            )
+        else:
+            self._colour = colour
 
 
 class SpriteManager:
@@ -233,8 +255,10 @@ class SpriteManager:
 
         1. ``asset_dir/pieces/<rank>/<side>/<rank>.png`` (team-specific, if
            *owner* is provided)
-        2. ``asset_dir/pieces/<rank>/<rank>.png`` (generic / Red default)
-        3. Solid-colour placeholder surface
+        2. ``asset_dir/pieces/<rank>/<rank>.png`` (generic) — tinted with the
+           team colour when *owner* is provided
+        3. Solid-colour placeholder surface — tinted with the team colour when
+           *owner* is provided
         """
         rank_name = rank.name.lower()
 
@@ -252,16 +276,47 @@ class SpriteManager:
                     )
 
         # 2. Try generic / Red-default image (assets/pieces/marshal/marshal.png)
+        #    Apply team tint so neutral grayscale masters pick up the player colour.
         image_path = self._asset_dir / "pieces" / rank_name / f"{rank_name}.png"
         if _PYGAME_AVAILABLE and image_path.exists():
             try:
-                return _pygame.image.load(str(image_path))
+                surface = _pygame.image.load(str(image_path))
+                if owner is not None:
+                    surface = self._apply_tint(surface, owner)
+                return surface
             except Exception:  # noqa: BLE001, S110
                 logger.debug("SpriteManager: failed to load image for rank %s", rank_name)
 
-        # 3. Solid-colour placeholder
+        # 3. Solid-colour placeholder — tinted with the team colour.
         colour = _RANK_COLOURS.get(rank, (128, 128, 128))
-        return self._make_placeholder(colour)
+        surface = self._make_placeholder(colour)
+        if owner is not None:
+            surface = self._apply_tint(surface, owner)
+        return surface
+
+    def _apply_tint(self, surface: Any, owner: PlayerSide) -> Any:
+        """Return a copy of *surface* tinted with the team colour for *owner*.
+
+        Uses multiplicative RGB blending (``BLEND_RGB_MULT``) so that a neutral
+        grey base image is cleanly colourised.  Red player: ``#C83C3C``; Blue
+        player: ``#3C6ED2`` (ux-visual-style-guide.md §2.5).
+
+        Args:
+            surface: The source surface to tint (real pygame.Surface or _MockSurface).
+            owner: The owning :class:`~src.domain.enums.PlayerSide`.
+
+        Returns:
+            A new tinted surface, or *surface* unchanged if the operation fails.
+        """
+        tint = _TEAM_TINT_COLOURS[owner]
+        try:
+            tinted = surface.copy()
+            flags = _pygame.BLEND_RGB_MULT if _PYGAME_AVAILABLE else 1
+            tinted.fill(tint, special_flags=flags)
+            return tinted
+        except Exception:  # noqa: BLE001, S110
+            logger.debug("SpriteManager: tinting failed for side %s", owner.value)
+            return surface
 
     def _try_load_image(self, path: Path) -> Any:
         """Attempt to load an image from *path*; return ``None`` on failure."""
