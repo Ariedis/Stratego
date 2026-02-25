@@ -11,7 +11,7 @@ from typing import Any
 
 from src.application.event_bus import EventBus
 from src.application.events import CombatResolved, GameOver, InvalidMove, PieceMoved, TurnChanged
-from src.domain.enums import PlayerSide
+from src.domain.enums import PlayerSide, Rank
 from src.domain.game_state import GameState
 from src.domain.piece import Position
 from src.presentation.screens.base import Screen
@@ -41,9 +41,13 @@ _BG_COLOUR = (20, 30, 48)
 _SELECT_COLOUR = (255, 255, 0, 128)  # yellow highlight for selected piece
 _INVALID_COLOUR = (255, 80, 80, 128)  # red tint for invalid move flash
 _PANEL_COLOUR = (30, 45, 70)
+_PANEL_BORDER_COLOUR = (60, 80, 110)
 _TEXT_COLOUR = (220, 220, 220)
+_TEXT_SECONDARY = (150, 160, 180)
 _BTN_COLOUR = (50, 70, 100)
 _BTN_HOVER_COLOUR = (80, 110, 160)
+_BTN_DANGER_COLOUR = (120, 40, 40)
+_BTN_DANGER_HOVER_COLOUR = (180, 60, 60)
 _STATUS_RED = (200, 60, 60)
 _STATUS_BLUE = (60, 100, 200)
 
@@ -69,6 +73,22 @@ _INVALID_MOVE_MESSAGES: dict[str, str] = {
     "wrong_phase": "Moves are not allowed during setup",
 }
 
+# Rank abbreviations used in the captured-pieces tray (wireframe §4).
+_RANK_ABBREV: dict[Rank, str] = {
+    Rank.MARSHAL: "Ma",
+    Rank.GENERAL: "Ge",
+    Rank.COLONEL: "Co",
+    Rank.MAJOR: "Mj",
+    Rank.CAPTAIN: "Ca",
+    Rank.LIEUTENANT: "Li",
+    Rank.SERGEANT: "Se",
+    Rank.MINER: "Mi",
+    Rank.SCOUT: "Sc",
+    Rank.SPY: "Sp",
+    Rank.BOMB: "Bm",
+    Rank.FLAG: "Fl",
+}
+
 
 class PlayingScreen(Screen):
     """The main in-game screen — renders the board and handles player input.
@@ -89,6 +109,7 @@ class PlayingScreen(Screen):
         renderer: Any,
         viewing_player: PlayerSide = PlayerSide.RED,
         game_context: Any = None,
+        undo_enabled: bool = False,
     ) -> None:
         """Initialise the playing screen.
 
@@ -104,6 +125,8 @@ class PlayingScreen(Screen):
             game_context: Optional ``_GameContext`` — forwarded to
                 ``GameOverScreen`` to enable proper navigation from the
                 game-over screen.
+            undo_enabled: Whether the Undo button should be shown in the
+                side panel.  Defaults to ``False``.
         """
         self._controller = controller
         self._screen_manager = screen_manager
@@ -111,10 +134,14 @@ class PlayingScreen(Screen):
         self._renderer = renderer
         self._viewing_player = viewing_player
         self._game_context = game_context
+        self._undo_enabled = undo_enabled
 
         self._selected_pos: Position | None = None
         self._invalid_flash: float = 0.0   # seconds remaining for red flash
         self._status_message: str = ""
+        self._last_move_text: str = ""       # last-move summary for side panel
+        self._captured_by_red: list[str] = []    # rank abbrevs captured by RED
+        self._captured_by_blue: list[str] = []   # rank abbrevs captured by BLUE
         self._font: Any = None
         self._font_small: Any = None
         self._mouse_pos: tuple[int, int] = (0, 0)
@@ -256,16 +283,35 @@ class PlayingScreen(Screen):
     def _on_piece_moved(self, event: PieceMoved) -> None:
         """Handle a successful move — clear selection and update status."""
         self._selected_pos = None
+        owner = event.piece.owner.value.upper()
+        fr = event.from_pos
+        to = event.to_pos
+        # Convert zero-based indices to algebraic notation (col letter + row number).
+        col_letters = "ABCDEFGHIJ"
+        fr_cell = f"{col_letters[fr.col]}{10 - fr.row}"
+        to_cell = f"{col_letters[to.col]}{10 - to.row}"
+        self._last_move_text = f"{owner} {fr_cell}→{to_cell}"
         self._status_message = self._active_player_label()
         logger.debug("PlayingScreen: piece moved %s→%s", event.from_pos, event.to_pos)
 
     def _on_combat_resolved(self, event: CombatResolved) -> None:
-        """Handle combat resolution — update status message."""
+        """Handle combat resolution — update status and captured-pieces tray."""
         winner_str = (
             str(event.winner.value) if event.winner is not None else "Draw"
         )
         self._status_message = f"Combat: {winner_str} wins!"
         self._selected_pos = None
+
+        # Track captured pieces for the side-panel tray.
+        if event.winner == PlayerSide.RED:
+            # RED wins combat → RED captured a BLUE piece (the defender).
+            abbrev = _RANK_ABBREV.get(event.defender.rank, "?")
+            self._captured_by_red.append(abbrev)
+        elif event.winner == PlayerSide.BLUE:
+            # BLUE wins combat → BLUE captured a RED piece (the attacker).
+            abbrev = _RANK_ABBREV.get(event.attacker.rank, "?")
+            self._captured_by_blue.append(abbrev)
+
         logger.debug("PlayingScreen: combat resolved, winner=%s", event.winner)
 
     def _on_turn_changed(self, event: TurnChanged) -> None:
@@ -357,6 +403,10 @@ class PlayingScreen(Screen):
         if save_rect is not None and save_rect.collidepoint(pixel_pos):
             self._on_save_game()
             return
+        undo_rect = self._undo_button_rect()
+        if undo_rect is not None and undo_rect.collidepoint(pixel_pos):
+            self._on_undo()
+            return
         quit_rect = self._quit_button_rect()
         if quit_rect is not None and quit_rect.collidepoint(pixel_pos):
             self._on_quit_to_menu()
@@ -366,7 +416,20 @@ class PlayingScreen(Screen):
     # ------------------------------------------------------------------
 
     def _render_panel(self, surface: Any, panel_x: int, panel_w: int, h: int) -> None:
-        """Draw the right-hand side panel contents.
+        """Draw the right-hand side panel contents per the wireframe layout.
+
+        Sections (top → bottom):
+        1. Player label (♦/♠ indicator + army name + turn indicator)
+        2. Turn counter
+        3. Separator
+        4. Status / last-move summary
+        5. Separator
+        6. Captured pieces tray (by RED / by BLUE)
+        7. Separator
+        8. Save Game button
+        9. Undo button (if ``undo_enabled``)
+        10. Separator
+        11. Quit to Menu button
 
         Args:
             surface: Target surface.
@@ -374,55 +437,124 @@ class PlayingScreen(Screen):
             panel_w: Width of the panel in pixels.
             h: Height of the window in pixels.
         """
-        if _pygame is None or self._font is None:
+        if _pygame is None or self._font is None or self._font_small is None:
             return
 
-        cx = panel_x + panel_w // 2
+        pad = 10  # left/right padding inside panel
+        left = panel_x + pad
+        y = 14  # running y cursor
 
-        # Active player label (H1.4 — use friendly army name).
         state: GameState = self._controller.current_state
-        player_colour = (
-            _STATUS_RED if state.active_player == PlayerSide.RED else _STATUS_BLUE
-        )
+        is_red = state.active_player == PlayerSide.RED
+        player_colour = _STATUS_RED if is_red else _STATUS_BLUE
         player_name = _PLAYER_NAMES.get(state.active_player, state.active_player.value)
-        player_label = self._font.render(
-            f"{player_name}'s turn", True, player_colour
-        )
-        surface.blit(player_label, player_label.get_rect(center=(cx, 60)))
+
+        # --- Section 1: Player label ------------------------------------------
+        # Draw ♦ / ♠ indicator dot (10 px radius) left-aligned.
+        indicator_symbol = "♦" if is_red else "♠"
+        indicator_surf = self._font.render(indicator_symbol, True, player_colour)
+        surface.blit(indicator_surf, (left, y))
+        # Army name right of the indicator.
+        name_surf = self._font.render(player_name.upper(), True, player_colour)
+        surface.blit(name_surf, (left + indicator_surf.get_width() + 6, y))
+        y += name_surf.get_height() + 4
+
+        # Active-turn indicator bullet.
+        if state.active_player == self._viewing_player:
+            turn_indicator = "● Your turn"
+        else:
+            turn_indicator = "○ Opponent's turn"
+        turn_ind_surf = self._font_small.render(turn_indicator, True, player_colour)
+        surface.blit(turn_ind_surf, (left, y))
+        y += turn_ind_surf.get_height() + 4
 
         # Turn counter.
-        if self._font_small is not None:
-            turn_label = self._font_small.render(
-                f"Turn {state.turn_number}", True, _TEXT_COLOUR
-            )
-            surface.blit(turn_label, turn_label.get_rect(center=(cx, 100)))
+        turn_surf = self._font_small.render(
+            f"Turn {state.turn_number}", True, _TEXT_SECONDARY
+        )
+        surface.blit(turn_surf, (left, y))
+        y += turn_surf.get_height() + 8
 
-            # Status message.
-            if self._status_message:
-                status_surf = self._font_small.render(
-                    self._status_message, True, _TEXT_COLOUR
-                )
-                surface.blit(status_surf, status_surf.get_rect(center=(cx, 140)))
+        # --- Separator --------------------------------------------------------
+        sep_x_end = panel_x + panel_w - pad
+        _pygame.draw.line(surface, _PANEL_BORDER_COLOUR, (panel_x + pad, y), (sep_x_end, y))
+        y += 10
 
-        # Save Game button.
-        save_rect = self._save_button_rect()
-        if save_rect is not None:
-            is_hovered_save = save_rect.collidepoint(self._mouse_pos)
-            save_colour = _BTN_HOVER_COLOUR if is_hovered_save else _BTN_COLOUR
-            _pygame.draw.rect(surface, save_colour, save_rect, border_radius=6)
-            if self._font_small is not None:
-                save_label = self._font_small.render("\U0001f4be Save", True, _TEXT_COLOUR)
-                surface.blit(save_label, save_label.get_rect(center=save_rect.center))
+        # --- Section 2: Status / last-move summary ----------------------------
+        if self._last_move_text or self._status_message:
+            move_header = self._font_small.render("Last move:", True, _TEXT_SECONDARY)
+            surface.blit(move_header, (left, y))
+            y += move_header.get_height() + 2
+            body_text = self._last_move_text or self._status_message
+            move_surf = self._font_small.render(body_text, True, _TEXT_COLOUR)
+            surface.blit(move_surf, (left, y))
+            y += move_surf.get_height() + 4
 
-        # Quit to Menu button.
-        quit_rect = self._quit_button_rect()
-        if quit_rect is not None:
-            is_hovered = quit_rect.collidepoint(self._mouse_pos)
-            btn_colour = _BTN_HOVER_COLOUR if is_hovered else _BTN_COLOUR
-            _pygame.draw.rect(surface, btn_colour, quit_rect, border_radius=6)
-            if self._font_small is not None:
-                quit_label = self._font_small.render("Quit \u2715", True, _TEXT_COLOUR)
-                surface.blit(quit_label, quit_label.get_rect(center=quit_rect.center))
+        # Status message (shown separately when it differs from last move).
+        if self._status_message and self._status_message != self._last_move_text:
+            status_surf = self._font_small.render(self._status_message, True, _TEXT_COLOUR)
+            surface.blit(status_surf, (left, y))
+            y += status_surf.get_height() + 4
+
+        y += 4
+
+        # --- Separator --------------------------------------------------------
+        _pygame.draw.line(surface, _PANEL_BORDER_COLOUR, (panel_x + pad, y), (sep_x_end, y))
+        y += 10
+
+        # --- Section 3: Captured pieces tray ----------------------------------
+        cap_header_red = self._font_small.render("Captured by RED:", True, _STATUS_RED)
+        surface.blit(cap_header_red, (left, y))
+        y += cap_header_red.get_height() + 2
+        cap_text = " ".join(self._captured_by_red) if self._captured_by_red else "—"
+        cap_red_surf = self._font_small.render(cap_text, True, _TEXT_COLOUR)
+        surface.blit(cap_red_surf, (left, y))
+        y += cap_red_surf.get_height() + 6
+
+        cap_header_blue = self._font_small.render("Captured by BLUE:", True, _STATUS_BLUE)
+        surface.blit(cap_header_blue, (left, y))
+        y += cap_header_blue.get_height() + 2
+        cap_text_b = " ".join(self._captured_by_blue) if self._captured_by_blue else "—"
+        cap_blue_surf = self._font_small.render(cap_text_b, True, _TEXT_COLOUR)
+        surface.blit(cap_blue_surf, (left, y))
+        y += cap_blue_surf.get_height() + 8
+
+        # --- Separator --------------------------------------------------------
+        _pygame.draw.line(surface, _PANEL_BORDER_COLOUR, (panel_x + pad, y), (sep_x_end, y))
+
+        # --- Section 4: Buttons (anchored near bottom) ------------------------
+        btn_h = 38
+        btn_w = panel_w - pad * 2
+        btn_x = panel_x + pad
+
+        # Calculate button positions from the bottom up.
+        quit_rect = _pygame.Rect(btn_x, h - btn_h - 10, btn_w, btn_h)
+        buttons: list[tuple[Any, str, bool]] = []  # (rect, label, is_danger)
+
+        if self._undo_enabled:
+            undo_rect = _pygame.Rect(btn_x, quit_rect.top - btn_h - 8, btn_w, btn_h)
+            save_rect = _pygame.Rect(btn_x, undo_rect.top - btn_h - 8, btn_w, btn_h)
+            buttons = [
+                (save_rect, "\U0001f4be Save", False),
+                (undo_rect, "\u21a9 Undo", False),
+                (quit_rect, "Quit \u2715", True),
+            ]
+        else:
+            save_rect = _pygame.Rect(btn_x, quit_rect.top - btn_h - 8, btn_w, btn_h)
+            buttons = [
+                (save_rect, "\U0001f4be Save", False),
+                (quit_rect, "Quit \u2715", True),
+            ]
+
+        for rect, label, is_danger in buttons:
+            hovered = rect.collidepoint(self._mouse_pos)
+            if is_danger:
+                colour = _BTN_DANGER_HOVER_COLOUR if hovered else _BTN_DANGER_COLOUR
+            else:
+                colour = _BTN_HOVER_COLOUR if hovered else _BTN_COLOUR
+            _pygame.draw.rect(surface, colour, rect, border_radius=6)
+            lbl_surf = self._font_small.render(label, True, _TEXT_COLOUR)
+            surface.blit(lbl_surf, lbl_surf.get_rect(center=rect.center))
 
     def _save_button_rect(self) -> Any:
         """Return the pygame.Rect for the 'Save' button."""
@@ -439,8 +571,42 @@ class PlayingScreen(Screen):
                 h = info.current_h or 768
             panel_x = int(w * _BOARD_FRACTION)
             panel_w = w - panel_x
-            cx = panel_x + panel_w // 2
-            return _pygame.Rect(cx - 80, h - 130, 160, 40)
+            pad = 10
+            btn_h = 38
+            btn_w = panel_w - pad * 2
+            btn_x = panel_x + pad
+            quit_top = h - btn_h - 10
+            if self._undo_enabled:
+                undo_top = quit_top - btn_h - 8
+                save_top = undo_top - btn_h - 8
+            else:
+                save_top = quit_top - btn_h - 8
+            return _pygame.Rect(btn_x, save_top, btn_w, btn_h)
+        except Exception:
+            return None
+
+    def _undo_button_rect(self) -> Any:
+        """Return the pygame.Rect for the 'Undo' button, or ``None`` if disabled."""
+        if _pygame is None or not self._undo_enabled:
+            return None
+        try:
+            surface = _pygame.display.get_surface()
+            if surface is not None:
+                w = surface.get_width()
+                h = surface.get_height()
+            else:
+                info = _pygame.display.Info()
+                w = info.current_w or 1024
+                h = info.current_h or 768
+            panel_x = int(w * _BOARD_FRACTION)
+            panel_w = w - panel_x
+            pad = 10
+            btn_h = 38
+            btn_w = panel_w - pad * 2
+            btn_x = panel_x + pad
+            quit_top = h - btn_h - 10
+            undo_top = quit_top - btn_h - 8
+            return _pygame.Rect(btn_x, undo_top, btn_w, btn_h)
         except Exception:
             return None
 
@@ -459,8 +625,11 @@ class PlayingScreen(Screen):
                 h = info.current_h or 768
             panel_x = int(w * _BOARD_FRACTION)
             panel_w = w - panel_x
-            cx = panel_x + panel_w // 2
-            return _pygame.Rect(cx - 80, h - 80, 160, 40)
+            pad = 10
+            btn_h = 38
+            btn_w = panel_w - pad * 2
+            btn_x = panel_x + pad
+            return _pygame.Rect(btn_x, h - btn_h - 10, btn_w, btn_h)
         except Exception:
             return None
 
@@ -484,6 +653,19 @@ class PlayingScreen(Screen):
         except Exception:  # noqa: BLE001
             self._status_message = "Save failed"
 
+    def _on_undo(self) -> None:
+        """Undo the last move if undo is enabled."""
+        if not self._undo_enabled:
+            return
+        try:
+            if hasattr(self._controller, "undo"):
+                self._controller.undo()
+                self._status_message = "Move undone"
+                # Roll back the last-move text and captured tray entry.
+                self._last_move_text = ""
+        except Exception:  # noqa: BLE001
+            self._status_message = "Cannot undo"
+
     def _on_quit_to_menu(self) -> None:
         """Auto-save (future) and return to the main menu.
 
@@ -491,7 +673,7 @@ class PlayingScreen(Screen):
         so the playing screen is not left on the stack (H3.3).
         """
         # Pop every screen except the root (base) screen.
-        while len(self._screen_manager._stack) > 1:  # noqa: SLF001
+        while len(self._screen_manager.stack) > 1:
             try:
                 self._screen_manager.pop()
             except IndexError:
