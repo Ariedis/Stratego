@@ -3,8 +3,10 @@ test_sprite_manager.py — Unit tests for src/presentation/sprite_manager.py
 
 Epic: EPIC-7 | User Story: US-704
 Covers acceptance criteria: AC-2 (fallback), AC-5 (path traversal rejection),
-and existing Classic preload behaviour from US-401.
-Specification: custom_armies.md §5, system_design.md §2.4
+existing Classic preload behaviour from US-401, and team tinting (issue: Game
+Piece tinting).
+Specification: custom_armies.md §5, system_design.md §2.4,
+planning/ux-visual-style-guide.md §2.5
 """
 from __future__ import annotations
 
@@ -207,4 +209,42 @@ class TestSpriteManagerSessionImageSelection:
         sprite_manager.preload_army(army_mod)  # type: ignore[union-attr]
         s1 = sprite_manager.get_surface(Rank.SCOUT, PlayerSide.RED, revealed=True)
         s2 = sprite_manager.get_surface(Rank.SCOUT, PlayerSide.RED, revealed=True)
+        assert s1 is s2
+
+
+# ---------------------------------------------------------------------------
+# Team tinting — issue: "Game Piece tinting"
+# ---------------------------------------------------------------------------
+
+
+class TestSpriteManagerTinting:
+    """get_surface() returns differently-tinted surfaces for RED vs BLUE."""
+
+    def test_red_and_blue_surfaces_are_distinct_objects(
+        self, sprite_manager: SpriteManager
+    ) -> None:
+        """RED and BLUE surfaces for the same rank must be different objects."""
+        red_surface = sprite_manager.get_surface(Rank.SCOUT, PlayerSide.RED, revealed=True)
+        blue_surface = sprite_manager.get_surface(Rank.SCOUT, PlayerSide.BLUE, revealed=True)
+        assert red_surface is not blue_surface
+
+    @pytest.mark.parametrize("rank", list(Rank))
+    def test_tinting_does_not_raise_for_any_rank(
+        self, sprite_manager: SpriteManager, rank: Rank
+    ) -> None:
+        """get_surface() must not raise for either team and every rank."""
+        assert sprite_manager.get_surface(rank, PlayerSide.RED, revealed=True) is not None
+        assert sprite_manager.get_surface(rank, PlayerSide.BLUE, revealed=True) is not None
+
+    def test_hidden_surface_is_not_tinted(self, sprite_manager: SpriteManager) -> None:
+        """Hidden (revealed=False) surface must be the shared hidden surface, not tinted."""
+        red_hidden = sprite_manager.get_surface(Rank.MARSHAL, PlayerSide.RED, revealed=False)
+        blue_hidden = sprite_manager.get_surface(Rank.MARSHAL, PlayerSide.BLUE, revealed=False)
+        assert red_hidden is sprite_manager.hidden_surface
+        assert blue_hidden is sprite_manager.hidden_surface
+
+    def test_tinted_surfaces_are_cached(self, sprite_manager: SpriteManager) -> None:
+        """Successive calls for the same (rank, side) return the identical cached surface."""
+        s1 = sprite_manager.get_surface(Rank.GENERAL, PlayerSide.RED, revealed=True)
+        s2 = sprite_manager.get_surface(Rank.GENERAL, PlayerSide.RED, revealed=True)
         assert s1 is s2
