@@ -287,3 +287,234 @@ class TestClearButton:
         setup_screen.auto_arrange()  # type: ignore[union-attr]
         setup_screen.clear()  # type: ignore[union-attr]
         assert len(setup_screen.placed_pieces) == 0  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Tray selection (wireframe §Piece Tray)
+# ---------------------------------------------------------------------------
+
+
+class TestTraySelection:
+    """Tests for rank-based tray selection."""
+
+    def test_selected_rank_is_none_on_enter(self, setup_screen: object) -> None:
+        """selected_rank is None immediately after on_enter."""
+        assert setup_screen._selected_rank is None  # type: ignore[union-attr]
+
+    def test_find_tray_piece_returns_first_when_no_selection(
+        self, setup_screen: object
+    ) -> None:
+        """_find_tray_piece returns the first tray piece when no rank is selected."""
+        piece = setup_screen._find_tray_piece()  # type: ignore[union-attr]
+        assert piece is setup_screen.piece_tray[0]  # type: ignore[union-attr]
+
+    def test_find_tray_piece_returns_matching_rank(self, setup_screen: object) -> None:
+        """_find_tray_piece returns a piece with the selected rank."""
+        from src.domain.enums import Rank
+        setup_screen._selected_rank = Rank.SCOUT  # type: ignore[union-attr]
+        piece = setup_screen._find_tray_piece()  # type: ignore[union-attr]
+        assert piece is not None
+        assert piece.rank == Rank.SCOUT  # type: ignore[union-attr]
+
+    def test_find_tray_piece_falls_back_when_rank_exhausted(
+        self, setup_screen: object
+    ) -> None:
+        """When selected rank is depleted, _find_tray_piece returns the first piece."""
+        from src.domain.enums import Rank
+        setup_screen._selected_rank = Rank.FLAG  # type: ignore[union-attr]
+        # Exhaust FLAG from the tray by placing it.
+        flag_pieces = [
+            p for p in setup_screen.piece_tray  # type: ignore[union-attr]
+            if p.rank == Rank.FLAG
+        ]
+        for fp in flag_pieces:
+            setup_screen.place_piece(fp, Position(9, 9))  # type: ignore[union-attr]
+        # Selected rank no longer in tray: fallback to first piece.
+        piece = setup_screen._find_tray_piece()  # type: ignore[union-attr]
+        assert piece is not None
+        assert piece is setup_screen.piece_tray[0]  # type: ignore[union-attr]
+
+    def test_cycle_tray_selection_advances(self, setup_screen: object) -> None:
+        """_cycle_tray_selection(1) moves to the next available rank."""
+        from src.presentation.screens.setup_screen import _TRAY_ORDER
+        setup_screen._selected_rank = _TRAY_ORDER[0]  # type: ignore[union-attr]
+        setup_screen._cycle_tray_selection(1)  # type: ignore[union-attr]
+        assert setup_screen._selected_rank == _TRAY_ORDER[1]  # type: ignore[union-attr]
+
+    def test_cycle_tray_selection_wraps(self, setup_screen: object) -> None:
+        """_cycle_tray_selection wraps from the last rank back to the first."""
+        from src.presentation.screens.setup_screen import _TRAY_ORDER
+        available = [
+            r for r in _TRAY_ORDER
+            if any(p.rank == r for p in setup_screen.piece_tray)  # type: ignore[union-attr]
+        ]
+        setup_screen._selected_rank = available[-1]  # type: ignore[union-attr]
+        setup_screen._cycle_tray_selection(1)  # type: ignore[union-attr]
+        assert setup_screen._selected_rank == available[0]  # type: ignore[union-attr]
+
+    def test_cycle_tray_selection_backward(self, setup_screen: object) -> None:
+        """_cycle_tray_selection(-1) moves to the previous rank."""
+        from src.presentation.screens.setup_screen import _TRAY_ORDER
+        setup_screen._selected_rank = _TRAY_ORDER[1]  # type: ignore[union-attr]
+        setup_screen._cycle_tray_selection(-1)  # type: ignore[union-attr]
+        assert setup_screen._selected_rank == _TRAY_ORDER[0]  # type: ignore[union-attr]
+
+    def test_cycle_initialises_when_none(self, setup_screen: object) -> None:
+        """_cycle_tray_selection sets first available rank when selection is None."""
+        from src.presentation.screens.setup_screen import _TRAY_ORDER
+        assert setup_screen._selected_rank is None  # type: ignore[union-attr]
+        setup_screen._cycle_tray_selection(1)  # type: ignore[union-attr]
+        available = [
+            r for r in _TRAY_ORDER
+            if any(p.rank == r for p in setup_screen.piece_tray)  # type: ignore[union-attr]
+        ]
+        assert setup_screen._selected_rank == available[0]  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Invalid-cell flash (wireframe annotation 4)
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidCellFlash:
+    """Annotation 4: placing outside the setup zone triggers a flash."""
+
+    def test_invalid_flash_cells_empty_on_enter(self, setup_screen: object) -> None:
+        """No flash cells are active immediately after on_enter."""
+        assert setup_screen._invalid_flash_cells == {}  # type: ignore[union-attr]
+
+    def test_update_decrements_flash_timer(self, setup_screen: object) -> None:
+        """update() reduces the remaining time on an active flash cell."""
+        setup_screen._invalid_flash_cells[(0, 0)] = 0.5  # type: ignore[union-attr]
+        setup_screen.update(0.1)  # type: ignore[union-attr]
+        assert setup_screen._invalid_flash_cells[(0, 0)] == pytest.approx(0.4)  # type: ignore[union-attr]
+
+    def test_update_removes_expired_flash_cell(self, setup_screen: object) -> None:
+        """update() removes a flash cell whose timer has reached zero."""
+        setup_screen._invalid_flash_cells[(3, 3)] = 0.0  # type: ignore[union-attr]
+        setup_screen.update(0.1)  # type: ignore[union-attr]
+        assert (3, 3) not in setup_screen._invalid_flash_cells  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Handover overlay (wireframe §Player Handover Overlay)
+# ---------------------------------------------------------------------------
+
+
+class TestHandoverOverlay:
+    """Handover overlay is shown when Player 1 clicks Ready in 2-player mode."""
+
+    def _make_two_player_screen(
+        self,
+        mock_game_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+    ) -> object:
+        """Return a SetupScreen wired for a 2-player game."""
+        from src.domain.enums import PlayerType
+
+        red_player = MagicMock()
+        red_player.side = PlayerSide.RED
+        red_player.player_type = PlayerType.HUMAN
+        red_player.pieces_remaining = []
+
+        blue_player = MagicMock()
+        blue_player.side = PlayerSide.BLUE
+        blue_player.player_type = PlayerType.HUMAN
+        blue_player.pieces_remaining = []
+
+        mock_game_controller.current_state = MagicMock()
+        mock_game_controller.current_state.players = [red_player, blue_player]
+
+        screen = SetupScreen(
+            game_controller=mock_game_controller,
+            screen_manager=mock_screen_manager,
+            player_side=PlayerSide.RED,
+            army=STANDARD_ARMY,
+            event_bus=MagicMock(),
+            renderer=MagicMock(),
+        )
+        screen.on_enter({})
+        return screen
+
+    def test_overlay_not_shown_initially(
+        self,
+        mock_game_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+    ) -> None:
+        """Handover overlay is hidden when the screen first opens."""
+        screen = self._make_two_player_screen(mock_game_controller, mock_screen_manager)
+        assert screen._show_handover_overlay is False  # type: ignore[union-attr]
+
+    def test_overlay_shown_after_ready_in_two_player(
+        self,
+        mock_game_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+    ) -> None:
+        """_show_handover_overlay becomes True when Player 1 clicks Ready."""
+        from src.domain.enums import PlayerType
+
+        blue_player = MagicMock()
+        blue_player.side = PlayerSide.BLUE
+        blue_player.player_type = PlayerType.HUMAN
+        blue_player.pieces_remaining = []
+
+        red_player = MagicMock()
+        red_player.side = PlayerSide.RED
+        red_player.player_type = PlayerType.HUMAN
+        red_player.pieces_remaining = []
+
+        mock_game_controller.current_state = MagicMock()
+        mock_game_controller.current_state.players = [red_player, blue_player]
+
+        screen = SetupScreen(
+            game_controller=mock_game_controller,
+            screen_manager=mock_screen_manager,
+            player_side=PlayerSide.RED,
+            army=STANDARD_ARMY,
+            event_bus=MagicMock(),
+            renderer=MagicMock(),
+        )
+        screen.on_enter({})
+        screen.auto_arrange()  # type: ignore[union-attr]
+        screen._on_ready()  # type: ignore[union-attr]
+        assert screen._show_handover_overlay is True  # type: ignore[union-attr]
+        # screen_manager.replace should NOT have been called yet.
+        mock_screen_manager.replace.assert_not_called()
+
+    def test_dismiss_handover_overlay_calls_replace(
+        self,
+        mock_game_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+    ) -> None:
+        """_dismiss_handover_overlay() hides the overlay and transitions screens."""
+        from src.domain.enums import PlayerType
+
+        blue_player = MagicMock()
+        blue_player.side = PlayerSide.BLUE
+        blue_player.player_type = PlayerType.HUMAN
+        blue_player.pieces_remaining = []
+
+        red_player = MagicMock()
+        red_player.side = PlayerSide.RED
+        red_player.player_type = PlayerType.HUMAN
+        red_player.pieces_remaining = []
+
+        mock_game_controller.current_state = MagicMock()
+        mock_game_controller.current_state.players = [red_player, blue_player]
+
+        screen = SetupScreen(
+            game_controller=mock_game_controller,
+            screen_manager=mock_screen_manager,
+            player_side=PlayerSide.RED,
+            army=STANDARD_ARMY,
+            event_bus=MagicMock(),
+            renderer=MagicMock(),
+        )
+        screen.on_enter({})
+        screen.auto_arrange()  # type: ignore[union-attr]
+        screen._on_ready()  # type: ignore[union-attr]
+        assert screen._show_handover_overlay is True  # type: ignore[union-attr]
+
+        screen._dismiss_handover_overlay()  # type: ignore[union-attr]
+        assert screen._show_handover_overlay is False  # type: ignore[union-attr]
+        mock_screen_manager.replace.assert_called_once()
