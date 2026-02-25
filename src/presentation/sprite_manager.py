@@ -74,6 +74,12 @@ class SpriteManager:
     In environments where pygame is not initialised (e.g. headless unit tests)
     the manager returns lightweight placeholder objects rather than real
     ``pygame.Surface`` instances.
+
+    Team-specific images are loaded from
+    ``asset_dir/pieces/<rank>/<side>/<rank>.png`` when available, falling back
+    to the generic ``asset_dir/pieces/<rank>/<rank>.png`` and ultimately to a
+    solid-colour placeholder.  The *side* sub-directory is populated by
+    ``generate_assets.py``.
     """
 
     def __init__(self, asset_dir: Path) -> None:
@@ -83,7 +89,7 @@ class SpriteManager:
             asset_dir: Root directory that contains the ``pieces/`` sub-folder.
         """
         self._asset_dir = asset_dir
-        self._cache: dict[Rank, Any] = {}
+        self._cache: dict[Rank | tuple[Rank, PlayerSide], Any] = {}
         self._hidden_surface: Any = self._make_placeholder((40, 40, 40))
         self._lake_surface: Any = self._make_placeholder((0, 100, 200))
         self._empty_surface: Any = self._make_placeholder((34, 139, 34))
@@ -114,11 +120,13 @@ class SpriteManager:
     def preload_classic(self) -> None:
         """Load all rank images from ``asset_dir/pieces/<rank>/`` into the cache.
 
-        Falls back to solid-colour placeholder surfaces if no image files
-        are found at the expected path.
+        Loads both RED and BLUE team variants when available (from
+        ``<rank>/red/`` and ``<rank>/blue/`` sub-directories).  Falls back to
+        solid-colour placeholder surfaces if no image files are found.
         """
         for rank in Rank:
-            self._cache[rank] = self._load_rank_surface(rank)
+            for side in PlayerSide:
+                self._cache[(rank, side)] = self._load_rank_surface(rank, side)
 
     # ------------------------------------------------------------------
     # Surface access
@@ -127,9 +135,13 @@ class SpriteManager:
     def get_surface(self, rank: Rank, owner: PlayerSide, revealed: bool) -> Any:
         """Return the appropriate surface for a piece.
 
+        Looks up a team-specific image (``<rank>/<side>/<rank>.png``) first,
+        then falls back to the generic image (``<rank>/<rank>.png``) and
+        finally to a solid-colour placeholder.
+
         Args:
             rank: The piece's rank.
-            owner: The owning player (reserved for tinting in future).
+            owner: The owning player — used to select the Red or Blue variant.
             revealed: If ``False``, returns the hidden (face-down) surface.
 
         Returns:
@@ -137,9 +149,10 @@ class SpriteManager:
         """
         if not revealed:
             return self._hidden_surface
-        if rank not in self._cache:
-            self._cache[rank] = self._load_rank_surface(rank)
-        return self._cache[rank]
+        cache_key: tuple[Rank, PlayerSide] = (rank, owner)
+        if cache_key not in self._cache:
+            self._cache[cache_key] = self._load_rank_surface(rank, owner)
+        return self._cache[cache_key]
 
     # ------------------------------------------------------------------
     # Mod-aware preloading (custom_armies.md §5)
@@ -199,25 +212,54 @@ class SpriteManager:
                 full_path = army_mod.mod_directory / chosen
                 surface = self._try_load_image(full_path)
                 if surface is not None:
-                    self._cache[rank] = surface
+                    # Cache the same mod surface for both sides (mod images are
+                    # not team-specific).
+                    for side in PlayerSide:
+                        self._cache[(rank, side)] = surface
                     continue
             # Fallback: keep whatever Classic surface is already cached.
-            if rank not in self._cache:
-                self._cache[rank] = self._load_rank_surface(rank)
+            for side in PlayerSide:
+                if (rank, side) not in self._cache:
+                    self._cache[(rank, side)] = self._load_rank_surface(rank, side)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _load_rank_surface(self, rank: Rank) -> Any:
-        """Attempt to load the image for *rank*; fall back to a placeholder."""
+    def _load_rank_surface(self, rank: Rank, owner: PlayerSide | None = None) -> Any:
+        """Attempt to load the image for *rank*; fall back to a placeholder.
+
+        Tries paths in order:
+
+        1. ``asset_dir/pieces/<rank>/<side>/<rank>.png`` (team-specific, if
+           *owner* is provided)
+        2. ``asset_dir/pieces/<rank>/<rank>.png`` (generic / Red default)
+        3. Solid-colour placeholder surface
+        """
         rank_name = rank.name.lower()
+
+        # 1. Try team-specific image (e.g. assets/pieces/marshal/red/marshal.png)
+        if owner is not None:
+            side_name = owner.value.lower()  # "red" or "blue"
+            side_path = self._asset_dir / "pieces" / rank_name / side_name / f"{rank_name}.png"
+            if _PYGAME_AVAILABLE and side_path.exists():
+                try:
+                    return _pygame.image.load(str(side_path))
+                except Exception:  # noqa: BLE001, S110
+                    logger.debug(
+                        "SpriteManager: failed to load side image for rank %s side %s",
+                        rank_name, side_name,
+                    )
+
+        # 2. Try generic / Red-default image (assets/pieces/marshal/marshal.png)
         image_path = self._asset_dir / "pieces" / rank_name / f"{rank_name}.png"
         if _PYGAME_AVAILABLE and image_path.exists():
             try:
                 return _pygame.image.load(str(image_path))
             except Exception:  # noqa: BLE001, S110
                 logger.debug("SpriteManager: failed to load image for rank %s", rank_name)
+
+        # 3. Solid-colour placeholder
         colour = _RANK_COLOURS.get(rank, (128, 128, 128))
         return self._make_placeholder(colour)
 

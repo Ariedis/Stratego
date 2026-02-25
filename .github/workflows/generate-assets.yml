@@ -1,0 +1,58 @@
+name: Generate Game Assets
+
+# Runs once when the asset-generation branch is pushed.
+# Downloads real Stratego piece images from Wikimedia Commons (CC BY-SA 4.0)
+# and generates board tile images using pygame-ce, then commits the results
+# back to the branch so they are available in the PR.
+#
+# The job is skipped automatically if assets were already committed by a
+# previous run (detected by checking whether assets/pieces/ already exists).
+on:
+  push:
+    branches:
+      - 'copilot/download-image-assets-game'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-and-commit:
+    # Skip if this is the auto-commit that already added the assets.
+    if: "!contains(github.event.head_commit.message, 'chore: add game image assets')"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install SDL2 system libraries (required by pygame-ce headless)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-mixer-dev
+
+      - name: Install pygame-ce
+        run: pip install 'pygame-ce>=2.4'
+
+      - name: Generate and download assets
+        run: python generate_assets.py
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+
+      - name: Commit generated assets
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/
+          if git diff --staged --quiet; then
+            echo "Assets already up-to-date — nothing to commit."
+          else
+            git commit -m "chore: add game image assets from Wikimedia Commons (CC BY-SA 4.0)"
+            git push
+          fi
