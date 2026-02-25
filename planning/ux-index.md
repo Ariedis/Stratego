@@ -24,6 +24,7 @@ artist to implement it without further clarification.
 
 | Document | Contents |
 |---|---|
+| [ux-asset-inventory-and-sourcing-guide.md](./ux-asset-inventory-and-sourcing-guide.md) | **Asset inventory** — all 12 piece images + board tiles; exact file paths, 64×64 px format spec, sourcing recommendations (Wikimedia Commons, OpenGameArt, BGG) — **v0.1 Draft** |
 | [ux-competitive-analysis.md](./ux-competitive-analysis.md) | Survey of Lichess, Board Game Arena, Chess.com, and Tabletop Simulator — **v1.1: Lichess and BGA live-verified; chessground source reviewed** |
 | [ux-heuristics-evaluation.md](./ux-heuristics-evaluation.md) | Nielsen's 10 heuristics evaluation of all 8 screens with actionable improvements |
 | [ux-visual-style-guide.md](./ux-visual-style-guide.md) | Colour palette, typography, spacing system, component library — **v1.1: animation timing sourced from Lichess chessground** |
