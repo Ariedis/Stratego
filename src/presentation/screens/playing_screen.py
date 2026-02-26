@@ -14,6 +14,7 @@ from src.application.events import CombatResolved, GameOver, InvalidMove, PieceM
 from src.domain.enums import PlayerSide, Rank
 from src.domain.game_state import GameState
 from src.domain.piece import Position
+from src.presentation.font_utils import load_font
 from src.presentation.screens.base import Screen
 
 logger = logging.getLogger(__name__)
@@ -173,8 +174,8 @@ class PlayingScreen(Screen):
         if not _pygame.get_init():
             _pygame.init()
         _pygame.font.init()
-        self._font = _pygame.font.SysFont("Arial", 24)
-        self._font_small = _pygame.font.SysFont("Arial", 18)
+        self._font = load_font(_pygame.font, 24)
+        self._font_small = load_font(_pygame.font, 18)
 
         # Cache cell dimensions from the current display.
         try:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.presentation.font_utils import load_font
 from src.presentation.screens.base import Screen
 
 # Lazy import of pygame so the module works in headless test environments.
@@ -107,9 +108,9 @@ class LoadGameScreen(Screen):
         if not _pygame.get_init():
             _pygame.init()
         _pygame.font.init()
-        self._font_title = _pygame.font.SysFont("Arial", 44, bold=True)
-        self._font_medium = _pygame.font.SysFont("Arial", 28)
-        self._font_small = _pygame.font.SysFont("Arial", 18)
+        self._font_title = load_font(_pygame.font, 44, bold=True)
+        self._font_medium = load_font(_pygame.font, 28)
+        self._font_small = load_font(_pygame.font, 18)
 
     def on_exit(self) -> dict[str, Any]:
         """Return empty context.

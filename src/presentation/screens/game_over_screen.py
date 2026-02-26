@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.domain.enums import PlayerSide
+from src.presentation.font_utils import load_font
 from src.presentation.screens.base import Screen
 
 # Lazy import of pygame so the module works in headless test environments.
@@ -115,9 +116,9 @@ class GameOverScreen(Screen):
         if not _pygame.get_init():
             _pygame.init()
         _pygame.font.init()
-        self._font_large = _pygame.font.SysFont("Arial", 52, bold=True)
-        self._font_medium = _pygame.font.SysFont("Arial", 30)
-        self._font_small = _pygame.font.SysFont("Arial", 22)
+        self._font_large = load_font(_pygame.font, 52, bold=True)
+        self._font_medium = load_font(_pygame.font, 30)
+        self._font_small = load_font(_pygame.font, 22)
         self._buttons = self._build_buttons()
 
     def on_exit(self) -> dict[str, Any]:
