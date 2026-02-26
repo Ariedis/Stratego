@@ -232,7 +232,7 @@ class TestMain:
             # Verify Config.load was called with custom path
             assert mock_config_load.call_count == 1
             actual_path = mock_config_load.call_args[0][0]
-            assert str(actual_path) == "/tmp/custom.yaml"
+            assert actual_path.as_posix() == "/tmp/custom.yaml"
 
     def test_main_sets_up_logging(self) -> None:
         """main() calls setup_logging with correct parameters."""

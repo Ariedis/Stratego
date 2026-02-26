@@ -6,6 +6,7 @@ Specification: system_design.md §2.4; game_components.md §3.2
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from src.domain.enums import PlayerSide, Rank, TerrainType
@@ -13,6 +14,8 @@ from src.domain.game_state import GameState
 from src.domain.piece import Position
 from src.presentation.font_utils import load_font
 from src.presentation.sprite_manager import SpriteManager
+
+logger = logging.getLogger(__name__)
 
 # Layout constants — board occupies the left 80 % of the window (wireframe §1).
 _BOARD_FRACTION: float = 0.80
@@ -38,6 +41,7 @@ _RANK_ABBREV: dict[Rank, str] = {
 # Text colour for rank abbreviations drawn on piece tiles.
 _ABBREV_COLOUR = (255, 255, 255)
 _ABBREV_COLOUR_DARK = (20, 20, 20)
+_GRID_LINE_COLOUR = (35, 35, 35)
 
 
 class PygameRenderer:
@@ -118,9 +122,34 @@ class PygameRenderer:
                 if sq.terrain == TerrainType.LAKE:
                     tile = self._sprite_manager.lake_surface
                 else:
-                    tile = self._sprite_manager.empty_surface
+                    light_tile = getattr(
+                        self._sprite_manager,
+                        "light_surface",
+                        self._sprite_manager.empty_surface,
+                    )
+                    dark_tile = getattr(
+                        self._sprite_manager,
+                        "dark_surface",
+                        self._sprite_manager.empty_surface,
+                    )
+                    tile = (
+                        light_tile
+                        if (row + col) % 2 == 0
+                        else dark_tile
+                    )
 
                 screen.blit(self._safe_scale(tile, cell_w, cell_h), (x, y))
+
+                if _pg is not None:
+                    try:
+                        _pg.draw.rect(
+                            screen,
+                            _GRID_LINE_COLOUR,
+                            _pg.Rect(x, y, cell_w, cell_h),
+                            1,
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.debug("Grid line draw skipped for non-pygame screen surface")
 
                 # Draw piece (if any) on top of tile.
                 if sq.piece is not None:

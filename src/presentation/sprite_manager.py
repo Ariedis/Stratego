@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import random
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any
 
 from src.domain.enums import PlayerSide, Rank
@@ -100,8 +100,10 @@ class SpriteManager:
     Team-specific images are loaded from
     ``asset_dir/pieces/<rank>/<side>/<rank>.png`` when available, falling back
     to the generic ``asset_dir/pieces/<rank>/<rank>.png`` and ultimately to a
-    solid-colour placeholder.  The *side* sub-directory is populated by
-    ``generate_assets.py``.
+    solid-colour placeholder.  Board tiles are loaded from
+    ``asset_dir/board/`` (``cell_light.png``, ``cell_dark.png``,
+    ``cell_lake.png``, ``cell_hidden.png``) with solid-colour placeholders as
+    fallback.  The *side* sub-directory is populated by ``generate_assets.py``.
     """
 
     def __init__(self, asset_dir: Path) -> None:
@@ -112,9 +114,19 @@ class SpriteManager:
         """
         self._asset_dir = asset_dir
         self._cache: dict[Rank | tuple[Rank, PlayerSide], Any] = {}
-        self._hidden_surface: Any = self._make_placeholder((40, 40, 40))
-        self._lake_surface: Any = self._make_placeholder((0, 100, 200))
-        self._empty_surface: Any = self._make_placeholder((34, 139, 34))
+        self._hidden_surface: Any = self._load_board_surface(
+            "cell_hidden.png", (40, 40, 40)
+        )
+        self._lake_surface: Any = self._load_board_surface(
+            "cell_lake.png", (0, 100, 200)
+        )
+        self._light_surface: Any = self._load_board_surface(
+            "cell_light.png", (195, 160, 100)
+        )
+        self._dark_surface: Any = self._load_board_surface(
+            "cell_dark.png", (160, 120, 70)
+        )
+        self._empty_surface: Any = self._light_surface
 
     # ------------------------------------------------------------------
     # Properties
@@ -134,6 +146,16 @@ class SpriteManager:
     def empty_surface(self) -> Any:
         """Surface used for empty normal squares."""
         return self._empty_surface
+
+    @property
+    def light_surface(self) -> Any:
+        """Surface used for light normal squares."""
+        return self._light_surface
+
+    @property
+    def dark_surface(self) -> Any:
+        """Surface used for dark normal squares."""
+        return self._dark_surface
 
     # ------------------------------------------------------------------
     # Preloading
@@ -204,7 +226,7 @@ class SpriteManager:
         for rank, customisation in army_mod.unit_customisations.items():
             for img_path in customisation.image_paths:
                 img_path_str = str(img_path)
-                if Path(img_path_str).is_absolute() or ".." in img_path_str:
+                if self._is_unsafe_mod_image_path(img_path_str):
                     raise PathTraversalError(
                         f"Image path '{img_path}' for rank {rank.name} in mod "
                         f"'{army_mod.mod_id}' attempts a path traversal."
@@ -217,7 +239,7 @@ class SpriteManager:
         if isinstance(unit_image_paths, dict):
             for rank, img_path_raw in unit_image_paths.items():
                 img_path_str = str(img_path_raw)
-                if Path(img_path_str).is_absolute() or ".." in img_path_str:
+                if self._is_unsafe_mod_image_path(img_path_str):
                     raise PathTraversalError(
                         f"Image path '{img_path_raw}' for rank {rank.name} in mod "
                         f"'{army_mod.mod_id}' attempts a path traversal."
@@ -337,3 +359,26 @@ class SpriteManager:
             except Exception:  # noqa: BLE001, S110
                 logger.debug("SpriteManager: pygame Surface unavailable, using mock")
         return _MockSurface(colour)
+
+    def _load_board_surface(
+        self,
+        filename: str,
+        fallback_colour: tuple[int, int, int],
+    ) -> Any:
+        """Load a board tile from ``asset_dir/board`` with colour fallback."""
+        path = self._asset_dir / "board" / filename
+        if _PYGAME_AVAILABLE and path.exists():
+            try:
+                return _pygame.image.load(str(path))
+            except Exception:  # noqa: BLE001, S110
+                logger.debug("SpriteManager: failed to load board tile %s", path)
+        return self._make_placeholder(fallback_colour)
+
+    def _is_unsafe_mod_image_path(self, path_str: str) -> bool:
+        """Return ``True`` if *path_str* is absolute or traverses upward."""
+        if Path(path_str).is_absolute():
+            return True
+        if PurePosixPath(path_str).is_absolute() or PureWindowsPath(path_str).is_absolute():
+            return True
+        parts = path_str.replace("\\", "/").split("/")
+        return ".." in parts

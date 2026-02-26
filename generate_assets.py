@@ -140,7 +140,7 @@ def _download(url: str, dest: Path) -> bool:
     Wikimedia's rate limit before this function is even called.
     """
     for attempt in range(1, _MAX_RETRIES + 1):
-        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
                 data = resp.read()
