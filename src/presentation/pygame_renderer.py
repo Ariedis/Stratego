@@ -11,6 +11,7 @@ from typing import Any
 from src.domain.enums import PlayerSide, Rank, TerrainType
 from src.domain.game_state import GameState
 from src.domain.piece import Position
+from src.presentation.font_utils import load_font
 from src.presentation.sprite_manager import SpriteManager
 
 # Layout constants — board occupies the left 80 % of the window (wireframe §1).
@@ -99,7 +100,7 @@ class PygameRenderer:
             _pg.font.init()
             font_size = max(12, min(cell_w, cell_h) // 4)
             if self._font is None or getattr(self, "_last_font_size", None) != font_size:
-                self._font = _pg.font.SysFont("Arial", font_size, bold=True)
+                self._font = load_font(_pg.font, font_size, bold=True)
                 self._last_font_size: int = font_size
 
         # Fill background.

@@ -14,6 +14,7 @@ from src.application.commands import PlacePiece
 from src.application.event_bus import EventBus
 from src.domain.enums import GamePhase, PlayerSide, PlayerType, Rank
 from src.domain.piece import Piece, Position
+from src.presentation.font_utils import load_font
 from src.presentation.screens.base import Screen
 
 # Lazy import of pygame so the module works in headless test environments.
@@ -200,8 +201,8 @@ class SetupScreen(Screen):
         if not _pygame.get_init():
             _pygame.init()
         _pygame.font.init()
-        self._font = _pygame.font.SysFont("Arial", 24)
-        self._font_small = _pygame.font.SysFont("Arial", 18)
+        self._font = load_font(_pygame.font, 24)
+        self._font_small = load_font(_pygame.font, 18)
 
     def on_exit(self) -> dict[str, Any]:
         """Return the current game state to the next screen.
