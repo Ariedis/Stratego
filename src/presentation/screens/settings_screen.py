@@ -82,6 +82,8 @@ class SettingsScreen(Screen):
         self._font_small: Any = None
         self._mouse_pos: tuple[int, int] = (0, 0)
         self._buttons: list[dict[str, Any]] = []
+        # Toggle-pill rects populated each render() for click detection.
+        self._toggle_rects: list[tuple[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Public accessors (used by tests)
@@ -195,6 +197,7 @@ class SettingsScreen(Screen):
             y = 120
             gap = 48
             label_x = w // 4
+            self._toggle_rects = []  # rebuild pill rects each frame
             for title_text, field, state in rows:
                 if field is None:
                     # Section header
@@ -220,6 +223,7 @@ class SettingsScreen(Screen):
                     thumb_x = pill_rect.right - 18 if state else pill_rect.left + 4
                     thumb_rect = _pygame.Rect(thumb_x, pill_rect.y + 4, 20, 20)
                     _pygame.draw.ellipse(surface, _TEXT_COLOUR, thumb_rect)
+                    self._toggle_rects.append((field, pill_rect))
                     y += gap
 
         # Footer buttons
@@ -307,18 +311,50 @@ class SettingsScreen(Screen):
             if btn["rect"].collidepoint(pixel_pos):
                 btn["action"]()
                 return
+        # Toggle-pill clicks flip the corresponding boolean setting.
+        for field_name, rect in self._toggle_rects:
+            if rect.collidepoint(pixel_pos):
+                current: bool = getattr(self, f"_{field_name}", False)
+                setattr(self, f"_{field_name}", not current)
+                return
 
     def _on_back(self) -> None:
         """Return to the Main Menu without saving."""
         self._screen_manager.pop()
 
     def _on_apply(self) -> None:
-        """Write current settings to config and return to the Main Menu."""
+        """Apply current settings (toggle fullscreen, update config) and return to the menu."""
+        # Apply fullscreen / windowed mode immediately.
+        if _pygame is not None:
+            try:
+                # Determine target resolution from config if available.
+                try:
+                    res_w, res_h = self._game_context.config.display.resolution
+                except Exception:  # noqa: BLE001
+                    info = _pygame.display.Info()
+                    res_w = info.current_w or 1280
+                    res_h = info.current_h or 720
+                flags = _pygame.FULLSCREEN if self._fullscreen else 0
+                _pygame.display.set_mode((res_w, res_h), flags)
+            except Exception:  # noqa: BLE001,S110
+                pass
+
+        # Persist settings to config using dataclasses.replace() on frozen objects.
         try:
-            self._game_context.config.display.fullscreen = self._fullscreen
-            self._game_context.config.display.fps_cap = self._fps_cap
+            import dataclasses
+
+            new_display = dataclasses.replace(
+                self._game_context.config.display,
+                fullscreen=self._fullscreen,
+                fps_cap=self._fps_cap,
+            )
+            self._game_context.config = dataclasses.replace(
+                self._game_context.config,
+                display=new_display,
+            )
         except Exception:  # noqa: BLE001,S110
             pass
+
         self._screen_manager.pop()
 
     def _on_reset(self) -> None:
