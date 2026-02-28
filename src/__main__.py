@@ -27,6 +27,7 @@ from src.domain.enums import GamePhase, PlayerSide, PlayerType, Rank
 from src.domain.game_state import GameState
 from src.domain.player import Player
 from src.infrastructure.config import Config
+from src.infrastructure.json_repository import JsonRepository
 from src.infrastructure.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path("~/.stratego/config.yaml")
 _DEFAULT_LOG_DIR = Path("~/.stratego/logs")
+_DEFAULT_SAVE_DIR = Path("~/.stratego/saves")
 
 # ---------------------------------------------------------------------------
 # Standard Stratego army composition — 40 pieces per player
@@ -159,6 +161,7 @@ class _GameContext:
         renderer_adapter: Any,
         asset_dir: Path,
         config: Config | None = None,
+        repository: JsonRepository | None = None,
     ) -> None:
         """Initialise the context with an existing controller.
 
@@ -174,12 +177,18 @@ class _GameContext:
             config: The application ``Config``; used by the settings screen to
                 read and persist display preferences.  Defaults to a fresh
                 ``Config()`` when ``None``.
+            repository: The ``JsonRepository`` used to persist game saves.
+                Defaults to a repository in ``_DEFAULT_SAVE_DIR`` when ``None``.
         """
         self._controller: Any = initial_controller
         self._turn_manager_proxy = turn_manager_proxy
         self._renderer_adapter: Any = renderer_adapter
         self._asset_dir = asset_dir
         self.config: Config = config if config is not None else Config()
+        self.repository: JsonRepository = (
+            repository if repository is not None
+            else JsonRepository(_DEFAULT_SAVE_DIR.expanduser())
+        )
 
     # Expose current_state so GameLoop can call self._controller.current_state.
     @property
@@ -241,6 +250,7 @@ class _GameContext:
             event_bus=event_bus,
             renderer=self._renderer_adapter,
             viewing_player=PlayerSide.RED,
+            game_context=self,
         )
         screen_manager.push(setup_screen)
 
