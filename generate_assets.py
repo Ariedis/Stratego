@@ -263,17 +263,26 @@ def _make_cell_lake_pixels() -> list[list[tuple[int, int, int]]]:
 
 
 def _make_cell_hidden_pixels() -> list[list[tuple[int, int, int]]]:
-    """64×64 dark-navy fog-of-war tile with a 2-px border."""
-    base = (28, 38, 56)
-    border = (50, 65, 95)
+    """64×64 medium-grey piece placeholder tile with a subtle border.
+
+    Represents a hidden (face-down) opponent piece — grey rather than dark so
+    that it reads as a piece, not an empty board cell.
+    """
+    base = (140, 140, 140)
+    border = (100, 100, 100)
+    highlight = (170, 170, 170)
     rows = _make_cell_pixels(base, dark_edges=False)
-    # 2-px border
+    # 2-px border to suggest a piece boundary
     for i in range(_SIZE):
         for b_off in (0, 1):
             rows[b_off][i] = border
             rows[_SIZE - 1 - b_off][i] = border
             rows[i][b_off] = border
             rows[i][_SIZE - 1 - b_off] = border
+    # Subtle top-left highlight to suggest 3D depth
+    for i in range(2, 8):
+        for j in range(2, 8):
+            rows[i][j] = highlight
     return rows
 
 
