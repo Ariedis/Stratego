@@ -11,7 +11,14 @@ import random
 from typing import Any
 
 from src.application.event_bus import EventBus
-from src.application.events import CombatResolved, GameOver, InvalidMove, PieceMoved, TurnChanged
+from src.application.events import (
+    CombatResolved,
+    GameOver,
+    GameSaved,
+    InvalidMove,
+    PieceMoved,
+    TurnChanged,
+)
 from src.domain.enums import PlayerSide, PlayerType, Rank
 from src.domain.game_state import GameState
 from src.domain.piece import Position
@@ -776,12 +783,13 @@ class PlayingScreen(Screen):
             return ""
 
     def _on_save_game(self) -> None:
-        """Save the current game state (stub — to be wired to the repository)."""
+        """Save the current game state to the repository."""
         try:
             if self._game_context is not None and hasattr(self._game_context, "repository"):
-                self._game_context.repository.save(
-                    self._controller.current_state, "autosave.json"
-                )
+                state = self._controller.current_state
+                filename = f"save_turn{state.turn_number}.json"
+                saved_path = self._game_context.repository.save(state, filename)
+                self._event_bus.publish(GameSaved(filepath=str(saved_path)))
                 self._status_message = "Game saved!"
         except Exception:  # noqa: BLE001
             self._status_message = "Save failed"

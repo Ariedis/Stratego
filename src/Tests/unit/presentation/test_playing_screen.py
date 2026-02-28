@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.application.event_bus import EventBus
+from src.application.events import GameSaved
 from src.domain.enums import PlayerSide, Rank
 from src.domain.piece import Piece, Position
 
@@ -443,3 +444,114 @@ class TestUndoButton:
 
     def test_undo_disabled_by_default(self, playing_screen: object) -> None:
         assert playing_screen._undo_enabled is False  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Save button
+# ---------------------------------------------------------------------------
+
+
+class TestSaveButton:
+    """Tests for the Save button (_on_save_game)."""
+
+    def test_save_sets_status_message(
+        self,
+        mock_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        """A successful save sets the status message to 'Game saved!'."""
+        mock_repo = MagicMock()
+        mock_repo.save.return_value = "/tmp/save_turn0.json"
+        mock_context = MagicMock()
+        mock_context.repository = mock_repo
+
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=mock_screen_manager,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+            game_context=mock_context,
+        )
+        screen.on_enter({})
+        screen._on_save_game()  # type: ignore[union-attr]
+
+        assert screen._status_message == "Game saved!"  # type: ignore[union-attr]
+        mock_repo.save.assert_called_once()
+
+    def test_save_publishes_game_saved_event(
+        self,
+        mock_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        """A successful save publishes a GameSaved event on the event bus."""
+        from pathlib import Path
+
+        mock_repo = MagicMock()
+        mock_repo.save.return_value = Path("/tmp/save_turn0.json")
+        mock_context = MagicMock()
+        mock_context.repository = mock_repo
+
+        received: list[GameSaved] = []
+        event_bus.subscribe(GameSaved, received.append)
+
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=mock_screen_manager,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+            game_context=mock_context,
+        )
+        screen.on_enter({})
+        screen._on_save_game()  # type: ignore[union-attr]
+
+        assert len(received) == 1
+        assert "/tmp/save_turn0.json" in received[0].filepath
+
+    def test_save_without_game_context_does_not_raise(
+        self,
+        mock_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        """Calling _on_save_game with no game_context does not raise."""
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=mock_screen_manager,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+            game_context=None,
+        )
+        screen.on_enter({})
+        screen._on_save_game()  # type: ignore[union-attr]
+        # Status message must not be 'Game saved!' when there is no repository.
+        assert screen._status_message != "Game saved!"  # type: ignore[union-attr]
+
+    def test_save_failure_sets_failed_status(
+        self,
+        mock_controller: MagicMock,
+        mock_screen_manager: MagicMock,
+        event_bus: EventBus,
+        mock_renderer: MagicMock,
+    ) -> None:
+        """When the repository raises, status message is set to 'Save failed'."""
+        mock_repo = MagicMock()
+        mock_repo.save.side_effect = OSError("disk full")
+        mock_context = MagicMock()
+        mock_context.repository = mock_repo
+
+        screen = PlayingScreen(
+            controller=mock_controller,
+            screen_manager=mock_screen_manager,
+            event_bus=event_bus,
+            renderer=mock_renderer,
+            game_context=mock_context,
+        )
+        screen.on_enter({})
+        screen._on_save_game()  # type: ignore[union-attr]
+
+        assert screen._status_message == "Save failed"  # type: ignore[union-attr]

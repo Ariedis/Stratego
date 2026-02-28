@@ -120,6 +120,7 @@ class SetupScreen(Screen):
         event_bus: EventBus | None = None,
         renderer: Any = None,
         viewing_player: PlayerSide = PlayerSide.RED,
+        game_context: Any = None,
     ) -> None:
         """Initialise the setup screen.
 
@@ -135,6 +136,9 @@ class SetupScreen(Screen):
             renderer: Optional renderer adapter — forwarded to ``PlayingScreen``.
                 When ``None``, the Ready transition is suppressed.
             viewing_player: The player perspective passed to ``PlayingScreen``.
+            game_context: Optional ``_GameContext`` — forwarded to
+                ``PlayingScreen`` to enable saving and other session-level
+                operations.
         """
         self._controller = game_controller
         self._screen_manager = screen_manager
@@ -143,6 +147,7 @@ class SetupScreen(Screen):
         self._event_bus = event_bus
         self._renderer = renderer
         self._viewing_player = viewing_player
+        self._game_context = game_context
         self._piece_tray: list[Piece] = []
         self._placed_pieces: list[Piece] = []
         self._occupied_positions: set[tuple[int, int]] = set()
@@ -593,6 +598,7 @@ class SetupScreen(Screen):
                 event_bus=self._event_bus,
                 renderer=self._renderer,
                 viewing_player=opponent_side,
+                game_context=self._game_context,
             )
             self._pending_handover_screen = next_setup
             self._show_handover_overlay = True
@@ -615,6 +621,7 @@ class SetupScreen(Screen):
             event_bus=self._event_bus,
             renderer=self._renderer,
             viewing_player=self._viewing_player,
+            game_context=self._game_context,
         )
         self._screen_manager.replace(playing_screen)
 
