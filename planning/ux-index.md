@@ -1,8 +1,8 @@
 # Conqueror's Quest – UX Documentation Index
 
-**Version:** v1.0  
+**Version:** v1.1  
 **Author:** Senior UX Designer  
-**Date:** 2026-02-24  
+**Date:** 2026-02-28  
 **Status:** Draft – ready for developer review
 
 ---
@@ -38,6 +38,8 @@ artist to implement it without further clarification.
 | [ux-wireframe-setup.md](./ux-wireframe-setup.md) | `SetupScreen` wireframe + interaction spec |
 | [ux-wireframe-playing.md](./ux-wireframe-playing.md) | `PlayingScreen` wireframe + interaction spec |
 | [ux-wireframe-game-over.md](./ux-wireframe-game-over.md) | `GameOverScreen` wireframe + interaction spec |
+| [ux-wireframe-task-popup.md](./ux-wireframe-task-popup.md) | **`TaskPopupOverlay`** wireframe + interaction spec — **Unit Task feature** (issue [#79](https://github.com/Ariedis/Stratego/issues/79)) — **v0.1 Draft** |
+| [ux-user-journeys-task-popup.md](./ux-user-journeys-task-popup.md) | User journey maps for the Unit Task Popup feature (Journeys 3–5) — **v0.1 Draft** |
 
 ---
 
