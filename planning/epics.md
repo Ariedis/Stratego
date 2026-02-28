@@ -20,6 +20,7 @@
 | EPIC-5 | AI Layer | Must Have | 5 | F-5.1 – F-5.5 |
 | EPIC-6 | Infrastructure | Must Have | 6 | F-6.1 – F-6.3 |
 | EPIC-7 | Custom Armies & Polish | Should Have | 7 | F-7.1 – F-7.6 |
+| EPIC-8 | Unit Task Popup | Should Have | 8 | F-8.1 – F-8.9 |
 
 ---
 
@@ -263,3 +264,47 @@ piece names and images, and complete end-to-end integration testing.
 | Path traversal in mod image filenames | Low | High | Resolve all paths relative to mod folder; reject absolute paths |
 | Malformed image file crashing SpriteManager | Med | Med | Wrap image loading in try/except; fall back to Classic image |
 | Two mods with same folder name | Low | Med | Log warning; skip second mod; unique ID enforced by directory name |
+
+---
+
+# Epic: Unit Task Popup
+
+**ID:** EPIC-8  
+**Priority:** Should Have  
+**Specification refs:** [`ux-wireframe-task-popup.md`](./ux-wireframe-task-popup.md),
+[`ux-user-journeys-task-popup.md`](./ux-user-journeys-task-popup.md),
+[`custom_armies.md §4`](../specifications/custom_armies.md),
+[`screen_flow.md §3.7`](../specifications/screen_flow.md)  
+**Summary:** Deliver the Unit Task Popup feature, which pauses the game after
+a custom-army unit captures an enemy piece and displays a physical task that
+the captured human player must acknowledge before play resumes.
+
+## Features
+
+| ID | Feature | Priority |
+|----|---------|----------|
+| F-8.1 | `UnitTask` domain value object + `tasks` field on `UnitCustomisation` | Must Have |
+| F-8.2 | Army.json task parsing and validation (description length, image path safety) | Must Have |
+| F-8.3 | `TaskPopupOverlay` visual layout (scrim, card, heading, image panel, text panel, Complete button) | Must Have |
+| F-8.4 | Task popup trigger and dismissal logic (CombatResolved event, player-type checks, random task selection) | Must Have |
+| F-8.5 | Input blocking, entrance/exit animation, and keyboard navigation | Must Have |
+| F-8.6 | Animated GIF playback within the popup image panel | Should Have |
+| F-8.7 | Army Select Screen tasks notification (ℹ notice in preview panel) | Must Have |
+| F-8.8 | Post-dismissal last-move re-highlight (2 s, COLOUR_MOVE_LAST colours) | Should Have |
+| F-8.9 | 2-player local handover prompt in popup heading row | Should Have |
+
+## Assumptions
+
+- Tasks are a presentation-layer concern; no domain rules change.
+- The `CombatResolved` event already carries both the winning and losing unit references.
+- `SpriteManager` pre-extracts GIF frames at mod-load time (existing behaviour per US-704).
+- The popup is suppressed for AI captured players; the AI cannot perform physical tasks.
+
+## Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Path traversal via `tasks[n].image` in `army.json` | Low | High | Validate: absolute paths and `..` segments rejected per `custom_armies.md §10` and US-802 |
+| Task popup shown to wrong player in vs-AI mode | Med | High | Trigger condition must verify `captured_player.player_type == PlayerType.HUMAN` before showing popup |
+| GIF animation stuttering due to large file (> 2 MB) | Med | Low | Pre-extract frames at load; warn in mod docs; decouple popup frame timer from main game loop |
+| Player dismisses popup without completing the task | High | Low | Social/trust-based enforcement; Could Have: minimum dwell timer (`ux-wireframe-task-popup.md §13 Q1`) |
