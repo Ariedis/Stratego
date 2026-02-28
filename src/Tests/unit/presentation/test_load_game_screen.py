@@ -131,3 +131,40 @@ class TestLoadGameNavigation:
     ) -> None:
         load_screen_empty._on_back()  # type: ignore[union-attr]
         mock_screen_manager.pop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Load action
+# ---------------------------------------------------------------------------
+
+
+class TestLoadGameLoadAction:
+    """Tests for the Load action."""
+
+    def test_on_load_calls_resume_from_state(
+        self, mock_screen_manager: MagicMock
+    ) -> None:
+        """_on_load() loads the selected save and delegates to resume_from_state."""
+        ctx = MagicMock()
+        loaded_state = MagicMock()
+        ctx.repository.list_saves.return_value = ["save1.json"]
+        ctx.repository.load.return_value = loaded_state
+
+        screen = LoadGameScreen(
+            screen_manager=mock_screen_manager,
+            game_context=ctx,
+        )
+        screen.on_enter({})
+        screen._selected_index = 0  # type: ignore[union-attr]
+        screen._on_load()  # type: ignore[union-attr]
+
+        ctx.repository.load.assert_called_once_with("save1.json")
+        ctx.resume_from_state.assert_called_once_with(loaded_state, mock_screen_manager)
+
+    def test_on_load_does_nothing_when_no_selection(
+        self, load_screen_with_saves: object
+    ) -> None:
+        """_on_load() is a no-op when selected_index is -1."""
+        ctx = load_screen_with_saves._game_context  # type: ignore[union-attr]
+        load_screen_with_saves._on_load()  # type: ignore[union-attr]
+        ctx.repository.load.assert_not_called()

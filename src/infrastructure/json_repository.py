@@ -304,6 +304,21 @@ class JsonRepository:
                 f"Save file '{filename}' is structurally invalid: {exc}"
             ) from exc
 
+    def list_saves(self) -> list[str]:
+        """Return save-file names ordered newest-first.
+
+        Returns:
+            A list of ``.json`` file names (not full paths) found in the save
+            directory, sorted by modification time with the most recently
+            modified file first.  Returns an empty list when no saves exist.
+        """
+        candidates = sorted(
+            self._save_dir.glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return [p.name for p in candidates]
+
     def get_most_recent_save(self) -> Path | None:
         """Return the path of the most recently written save file, or ``None``.
 

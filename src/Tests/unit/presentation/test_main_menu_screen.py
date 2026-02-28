@@ -152,3 +152,42 @@ class TestMainMenuEventHandling:
         mock_screen_manager.push.assert_called_once()
         pushed = mock_screen_manager.push.call_args[0][0]
         assert isinstance(pushed, StartGameScreen)
+
+
+# ---------------------------------------------------------------------------
+# Continue button
+# ---------------------------------------------------------------------------
+
+
+class TestMainMenuContinue:
+    """Tests for the Continue button behaviour."""
+
+    def test_continue_disabled_when_no_saves(
+        self, mock_screen_manager: MagicMock
+    ) -> None:
+        """Continue button is disabled when there are no save files."""
+        ctx = MagicMock()
+        ctx.repository.get_most_recent_save.return_value = None
+        screen = MainMenuScreen(
+            screen_manager=mock_screen_manager,
+            game_context=ctx,
+        )
+        screen.on_enter({})
+        # on_enter calls _build_buttons which checks for saves — must not raise.
+
+    def test_on_continue_calls_resume_from_state(
+        self, mock_screen_manager: MagicMock
+    ) -> None:
+        """_on_continue() loads the save and delegates to resume_from_state."""
+        ctx = MagicMock()
+        loaded_state = MagicMock()
+        ctx.repository.load.return_value = loaded_state
+
+        screen = MainMenuScreen(
+            screen_manager=mock_screen_manager,
+            game_context=ctx,
+        )
+        screen._on_continue("game_001.json")  # type: ignore[union-attr]
+
+        ctx.repository.load.assert_called_once_with("game_001.json")
+        ctx.resume_from_state.assert_called_once_with(loaded_state, mock_screen_manager)
