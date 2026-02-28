@@ -67,6 +67,23 @@ jobs:
               '_This issue was automatically created by the CI pipeline and assigned to the software developer agent for triage._',
             ].join('\n');
 
+            for (const [name, color, description] of [
+              ['bug', 'd73a4a', "Something isn't working"],
+              ['ci-failure', 'e11d48', 'CI pipeline failure'],
+            ]) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                  description,
+                });
+              } catch (_) {
+                // Label already exists
+              }
+            }
+
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
