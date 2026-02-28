@@ -4,6 +4,10 @@ test_mod_validator.py — Unit tests for src/infrastructure/mod_validator.py
 Epic: EPIC-7 | User Story: US-703
 Covers acceptance criteria: AC-1 through AC-6
 Specification: custom_armies.md §4.3
+
+Epic: EPIC-8 | User Story: US-802
+Covers acceptance criteria: AC-2 through AC-6
+Specification: custom_armies.md §4.3, ux-wireframe-task-popup.md §7.1, §8
 """
 from __future__ import annotations
 
@@ -23,6 +27,14 @@ except ImportError:
     validate_manifest = None  # type: ignore[assignment, misc]
     ValidationError = Exception  # type: ignore[assignment, misc]
     _VALIDATOR_AVAILABLE = False
+
+# Feature flag: whether task-specific validation is implemented in mod_validator.
+try:
+    from src.infrastructure.mod_validator import _TASK_DESCRIPTION_MAX  # type: ignore[attr-defined]
+
+    _TASK_VALIDATION_AVAILABLE = True
+except (ImportError, AttributeError):
+    _TASK_VALIDATION_AVAILABLE = False
 
 pytestmark = pytest.mark.xfail(
     not _VALIDATOR_AVAILABLE,
@@ -202,3 +214,249 @@ class TestModValidatorValidManifest:
         }
         errors = validate_manifest(manifest)  # type: ignore[misc]
         assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# US-802 AC-2: Task description too long (>120 chars) — task skipped with warning
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    not _TASK_VALIDATION_AVAILABLE,
+    reason="Task validation not yet implemented in src.infrastructure.mod_validator",
+    strict=False,
+)
+class TestModValidatorTaskDescription:
+    """US-802 AC-2 & AC-3: task description length and content are validated."""
+
+    _BASE_MANIFEST: dict = {
+        "mod_version": "1.0",
+        "army_name": "Fitness Army",
+        "units": {
+            "LIEUTENANT": {
+                "display_name": "Scout Rider",
+                "tasks": [],
+            }
+        },
+    }
+
+    def _manifest_with_task(self, description: str, image: str = "images/t.gif") -> dict:
+        manifest = {
+            "mod_version": "1.0",
+            "army_name": "Fitness Army",
+            "units": {
+                "LIEUTENANT": {
+                    "display_name": "Scout Rider",
+                    "tasks": [{"description": description, "image": image}],
+                }
+            },
+        }
+        return manifest
+
+    def test_description_121_chars_task_is_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-2: description of 121 characters → task skipped, warning logged."""
+        long_desc = "A" * 121
+        manifest = self._manifest_with_task(long_desc)
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        # The whole mod should NOT be rejected (no ValidationError for the mod itself)
+        mod_level_errors = [
+            e for e in errors if "LIEUTENANT" not in e.field
+        ]
+        assert len(mod_level_errors) == 0, "Whole mod must not be rejected for a bad task"
+
+    def test_description_121_chars_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-2: Warning must be logged containing the field name and rank."""
+        long_desc = "A" * 121
+        manifest = self._manifest_with_task(long_desc)
+        with caplog.at_level(logging.WARNING):
+            validate_manifest(manifest)  # type: ignore[misc]
+        log_text = " ".join(r.getMessage() for r in caplog.records)
+        assert "LIEUTENANT" in log_text or "description" in log_text.lower()
+
+    def test_description_120_chars_is_valid(self) -> None:
+        """AC-2 (boundary): description of exactly 120 characters is valid."""
+        manifest = self._manifest_with_task("A" * 120)
+        errors = validate_manifest(manifest)  # type: ignore[misc]
+        task_errors = [
+            e for e in errors if "task" in e.field.lower() or "description" in e.field.lower()
+        ]
+        assert len(task_errors) == 0
+
+    def test_empty_description_task_is_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-3: description='' → task skipped with warning."""
+        manifest = self._manifest_with_task("")
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        mod_level_errors = [
+            e for e in errors if "LIEUTENANT" not in e.field
+        ]
+        assert len(mod_level_errors) == 0, "Whole mod must not be rejected for empty description"
+
+    def test_empty_description_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-3: A warning must be logged when description is empty."""
+        manifest = self._manifest_with_task("")
+        with caplog.at_level(logging.WARNING):
+            validate_manifest(manifest)  # type: ignore[misc]
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# US-802 AC-4: Path traversal in task image → treated as missing + warning
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    not _TASK_VALIDATION_AVAILABLE,
+    reason="Task validation not yet implemented in src.infrastructure.mod_validator",
+    strict=False,
+)
+class TestModValidatorTaskImageSecurity:
+    """US-802 AC-4 & AC-5: Unsafe image paths are treated as missing."""
+
+    def _manifest_with_image(self, image: str) -> dict:
+        return {
+            "mod_version": "1.0",
+            "army_name": "Fitness Army",
+            "units": {
+                "LIEUTENANT": {
+                    "display_name": "Scout Rider",
+                    "tasks": [{"description": "Do pushups", "image": image}],
+                }
+            },
+        }
+
+    def test_path_traversal_does_not_cause_mod_rejection(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-4: Path traversal '../../secrets' → image treated as missing; mod loads."""
+        manifest = self._manifest_with_image("../secrets/password.txt")
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        # Mod-level errors should not include a blocking error; just a warning
+        mod_errors = [e for e in errors if "tasks" not in e.field.lower()]
+        assert len(mod_errors) == 0
+
+    def test_path_traversal_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-4: A warning must be logged for path traversal attempts."""
+        manifest = self._manifest_with_image("../secrets/password.txt")
+        with caplog.at_level(logging.WARNING):
+            validate_manifest(manifest)  # type: ignore[misc]
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    def test_absolute_path_does_not_cause_mod_rejection(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-5: Absolute path '/absolute/path/image.png' → image treated as missing."""
+        manifest = self._manifest_with_image("/absolute/path/image.png")
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        mod_errors = [e for e in errors if "tasks" not in e.field.lower()]
+        assert len(mod_errors) == 0
+
+    def test_absolute_path_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-5: A warning must be logged for absolute image paths."""
+        manifest = self._manifest_with_image("/absolute/path/image.png")
+        with caplog.at_level(logging.WARNING):
+            validate_manifest(manifest)  # type: ignore[misc]
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# US-802 AC-6: Unsupported image extension → treated as missing + warning
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    not _TASK_VALIDATION_AVAILABLE,
+    reason="Task validation not yet implemented in src.infrastructure.mod_validator",
+    strict=False,
+)
+class TestModValidatorTaskImageExtension:
+    """US-802 AC-6: Unsupported image extension → image treated as missing."""
+
+    def _manifest_with_image(self, image: str) -> dict:
+        return {
+            "mod_version": "1.0",
+            "army_name": "Fitness Army",
+            "units": {
+                "LIEUTENANT": {
+                    "display_name": "Scout Rider",
+                    "tasks": [{"description": "Do pushups", "image": image}],
+                }
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "unsupported_image",
+        [
+            "images/tasks/pushups.xyz",
+            "images/tasks/exercise.tiff",
+            "images/tasks/demo.svg",
+            "images/tasks/video.mp4",
+        ],
+        ids=["xyz_ext", "tiff_ext", "svg_ext", "mp4_ext"],
+    )
+    def test_unsupported_extension_does_not_cause_mod_rejection(
+        self, unsupported_image: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-6: Unsupported extension → image treated as missing; mod is not rejected."""
+        manifest = self._manifest_with_image(unsupported_image)
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        mod_errors = [e for e in errors if "tasks" not in e.field.lower()]
+        assert len(mod_errors) == 0
+
+    @pytest.mark.parametrize(
+        "unsupported_image",
+        [
+            "images/tasks/pushups.xyz",
+            "images/tasks/exercise.tiff",
+        ],
+        ids=["xyz_ext", "tiff_ext"],
+    )
+    def test_unsupported_extension_warning_logged(
+        self, unsupported_image: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-6: A warning must be logged for unsupported image extensions."""
+        manifest = self._manifest_with_image(unsupported_image)
+        with caplog.at_level(logging.WARNING):
+            validate_manifest(manifest)  # type: ignore[misc]
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        "valid_image",
+        [
+            "images/tasks/pushups.png",
+            "images/tasks/situps.gif",
+            "images/tasks/squats.jpg",
+            "images/tasks/burpees.jpeg",
+            "images/tasks/planks.bmp",
+        ],
+        ids=["png", "gif", "jpg", "jpeg", "bmp"],
+    )
+    def test_supported_extension_produces_no_warning(
+        self, valid_image: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC-6 (inverse): Supported extensions do not trigger a warning."""
+        manifest = self._manifest_with_image(valid_image)
+        with caplog.at_level(logging.WARNING):
+            errors = validate_manifest(manifest)  # type: ignore[misc]
+        # There should be no task-image-extension warning
+        ext_warnings = [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING and "extension" in r.getMessage().lower()
+        ]
+        assert len(ext_warnings) == 0

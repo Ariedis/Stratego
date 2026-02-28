@@ -4,6 +4,10 @@ test_mod_loader.py — Unit tests for src/infrastructure/mod_loader.py
 Epic: EPIC-7 | User Story: US-702
 Covers acceptance criteria: AC-1 through AC-5
 Specification: custom_armies.md §3, §6
+
+Epic: EPIC-8 | User Story: US-802
+Covers acceptance criteria: AC-1, AC-7, AC-8
+Specification: custom_armies.md §4.3, ux-wireframe-task-popup.md §7.1, §8
 """
 from __future__ import annotations
 
@@ -24,6 +28,16 @@ try:
 except ImportError:
     discover_mods = None  # type: ignore[assignment, misc]
     _MOD_LOADER_AVAILABLE = False
+
+# Feature flag: whether UnitTask / tasks field are implemented in the domain.
+try:
+    from src.domain.army_mod import UnitCustomisation, UnitTask  # type: ignore[attr-defined]
+
+    _TASK_FEATURE_AVAILABLE = (
+        "tasks" in getattr(UnitCustomisation, "__dataclass_fields__", {})
+    )
+except (ImportError, AttributeError):
+    _TASK_FEATURE_AVAILABLE = False
 
 pytestmark = pytest.mark.xfail(
     not _MOD_LOADER_AVAILABLE,
@@ -196,3 +210,90 @@ class TestModLoaderNoImages:
         mods = discover_mods(tmp_path)  # type: ignore[misc]
         assert len(mods) == 1
         assert mods[0].army_name == "Dragon Horde"
+
+
+# ---------------------------------------------------------------------------
+# US-802 AC-1: Tasks array in army.json is parsed into UnitTask objects
+# ---------------------------------------------------------------------------
+
+_ARMY_JSON_WITH_TASKS = {
+    "mod_version": "1.0",
+    "army_name": "Fitness Army",
+    "units": {
+        "LIEUTENANT": {
+            "display_name": "Scout Rider",
+            "tasks": [
+                {
+                    "description": "Do 20 situps",
+                    "image": "images/tasks/situps.gif",
+                }
+            ],
+        }
+    },
+}
+
+_ARMY_JSON_NO_TASKS_KEY = {
+    "mod_version": "1.0",
+    "army_name": "No Tasks Army",
+    "units": {
+        "LIEUTENANT": {
+            "display_name": "Scout Rider",
+        }
+    },
+}
+
+_ARMY_JSON_EMPTY_TASKS = {
+    "mod_version": "1.0",
+    "army_name": "Empty Tasks Army",
+    "units": {
+        "LIEUTENANT": {
+            "display_name": "Scout Rider",
+            "tasks": [],
+        }
+    },
+}
+
+
+@pytest.mark.xfail(
+    not _TASK_FEATURE_AVAILABLE,
+    reason="UnitTask / tasks field not yet implemented in domain",
+    strict=False,
+)
+class TestModLoaderTaskParsing:
+    """US-802 AC-1, AC-7, AC-8: tasks arrays are parsed from army.json."""
+
+    def test_task_description_loaded(self, tmp_path: Path) -> None:
+        """AC-1: task description matches the value in army.json."""
+        _make_mod_dir(tmp_path, "fitness_army", _ARMY_JSON_WITH_TASKS)
+        mods = discover_mods(tmp_path)  # type: ignore[misc]
+        assert len(mods) == 1
+        from src.domain.enums import Rank
+        lieutenant = mods[0].unit_customisations[Rank.LIEUTENANT]
+        assert len(lieutenant.tasks) == 1
+        assert lieutenant.tasks[0].description == "Do 20 situps"
+
+    def test_task_image_path_resolved(self, tmp_path: Path) -> None:
+        """AC-1: task image_path is the resolved absolute Path."""
+        _make_mod_dir(tmp_path, "fitness_army", _ARMY_JSON_WITH_TASKS)
+        mods = discover_mods(tmp_path)  # type: ignore[misc]
+        from src.domain.enums import Rank
+        lieutenant = mods[0].unit_customisations[Rank.LIEUTENANT]
+        task = lieutenant.tasks[0]
+        assert task.image_path is not None
+        assert task.image_path == tmp_path / "fitness_army" / "images" / "tasks" / "situps.gif"
+
+    def test_no_tasks_key_results_in_empty_list(self, tmp_path: Path) -> None:
+        """AC-7: Unit with no 'tasks' key → unit_customisation.tasks is empty list."""
+        _make_mod_dir(tmp_path, "no_tasks", _ARMY_JSON_NO_TASKS_KEY)
+        mods = discover_mods(tmp_path)  # type: ignore[misc]
+        from src.domain.enums import Rank
+        lieutenant = mods[0].unit_customisations[Rank.LIEUTENANT]
+        assert lieutenant.tasks == []
+
+    def test_empty_tasks_array_results_in_empty_list(self, tmp_path: Path) -> None:
+        """AC-8: Unit with 'tasks': [] → unit_customisation.tasks is empty list."""
+        _make_mod_dir(tmp_path, "empty_tasks", _ARMY_JSON_EMPTY_TASKS)
+        mods = discover_mods(tmp_path)  # type: ignore[misc]
+        from src.domain.enums import Rank
+        lieutenant = mods[0].unit_customisations[Rank.LIEUTENANT]
+        assert lieutenant.tasks == []
