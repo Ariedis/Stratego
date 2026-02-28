@@ -180,7 +180,9 @@ class TestTaskPopupTrigger:
 
         customisation = _make_customisation_with_tasks(Rank.LIEUTENANT)
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             event_bus.publish(
                 CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)
             )
@@ -213,7 +215,9 @@ class TestTaskPopupSuppressedNoTasks:
 
         customisation = _make_customisation_no_tasks(Rank.LIEUTENANT)
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             event_bus.publish(
                 CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)
             )
@@ -247,7 +251,9 @@ class TestTaskPopupSuppressedClassicArmy:
         # Classic army has no tasks
         customisation = _make_customisation_no_tasks(Rank.MARSHAL)
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             event_bus.publish(
                 CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)
             )
@@ -280,7 +286,9 @@ class TestTaskPopupSuppressedAiCaptured:
 
         customisation = _make_customisation_with_tasks(Rank.LIEUTENANT)
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             event_bus.publish(
                 CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.RED)
             )
@@ -313,7 +321,9 @@ class TestTaskPopupSuppressedBothAi:
 
         customisation = _make_customisation_with_tasks(Rank.LIEUTENANT)
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             event_bus.publish(
                 CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)
             )
@@ -355,7 +365,9 @@ class TestTaskRandomSelection:
             tasks=[task1, task2],
         )
 
-        with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+        with patch.object(
+            type(screen), "_get_unit_customisation", return_value=customisation, create=True
+        ):
             with patch("random.choice", return_value=task1) as mock_choice:
                 event_bus.publish(
                     CombatResolved(attacker=attacker, defender=defender, winner=PlayerSide.BLUE)

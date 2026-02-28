@@ -30,7 +30,11 @@ except ImportError:
     GAME_MODE_VS_AI = "VS_AI"  # type: ignore[assignment]
 
 try:
-    from src.domain.army_mod import ArmyMod, UnitCustomisation, UnitTask  # type: ignore[attr-defined]
+    from src.domain.army_mod import (  # type: ignore[attr-defined]
+        ArmyMod,
+        UnitCustomisation,
+        UnitTask,
+    )
 
     _ARMY_MOD_AVAILABLE = True
 except (ImportError, AttributeError):

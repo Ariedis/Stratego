@@ -10,8 +10,7 @@ Specification: ux-wireframe-task-popup.md §4.1–§4.4, §11;
 """
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,7 +19,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
-    from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay  # type: ignore[import]
+    from src.presentation.overlays.task_popup_overlay import (
+        TaskPopupOverlay,  # type: ignore[import]
+    )
 
     _OVERLAY_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
@@ -261,7 +262,7 @@ class TestEnterSpaceDismissesPopup:
     def test_key_dismisses_popup_when_button_focused(self, key: int, key_id: str) -> None:
         """AC-9: Enter/Space with button focused → popup dismissed (is_visible False)."""
         overlay = _make_overlay()
-        assert overlay.button_focused is True  # pre-condition: button is focused  # type: ignore[union-attr]
+        assert overlay.button_focused is True  # type: ignore[union-attr]
         key_evt = _make_event(_KEYDOWN, key=key)
         overlay.handle_event(key_evt)  # type: ignore[union-attr]
         assert overlay.is_visible is False  # type: ignore[union-attr]

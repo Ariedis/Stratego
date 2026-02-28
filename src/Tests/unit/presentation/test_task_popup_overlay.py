@@ -8,7 +8,7 @@ Specification: ux-wireframe-task-popup.md §2, §3, §5, §6; screen_flow.md §3
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -17,7 +17,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
-    from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay  # type: ignore[import]
+    from src.presentation.overlays.task_popup_overlay import (
+        TaskPopupOverlay,  # type: ignore[import]
+    )
 
     _OVERLAY_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):

@@ -9,7 +9,6 @@ Specification: ux-user-journeys-task-popup.md §Journey 5;
 """
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,7 +18,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
-    from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay  # type: ignore[import]
+    from src.presentation.overlays.task_popup_overlay import (
+        TaskPopupOverlay,  # type: ignore[import]
+    )
 
     _OVERLAY_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):

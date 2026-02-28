@@ -116,7 +116,9 @@ def _trigger_popup_and_dismiss(screen: object, event_bus: EventBus) -> None:
         tasks=[task],
     )
 
-    with patch.object(type(screen), "_get_unit_customisation", return_value=customisation, create=True):
+    with patch.object(
+        type(screen), "_get_unit_customisation", return_value=customisation, create=True
+    ):
         event_bus.publish(
             CombatResolved(
                 attacker=attacker,
