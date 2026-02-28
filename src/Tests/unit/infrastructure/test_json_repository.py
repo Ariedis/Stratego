@@ -252,6 +252,52 @@ class TestJsonRepositoryMostRecentSave:
 
 
 # ---------------------------------------------------------------------------
+# list_saves()
+# ---------------------------------------------------------------------------
+
+
+class TestJsonRepositoryListSaves:
+    """list_saves() returns save-file names ordered newest-first."""
+
+    def test_list_saves_empty_when_no_saves(self, repository: object) -> None:
+        """No saves → empty list returned."""
+        result = repository.list_saves()  # type: ignore[union-attr]
+        assert result == []
+
+    def test_list_saves_returns_filenames(
+        self, repository: object, playing_state: object
+    ) -> None:
+        """list_saves() returns string file names, not full paths."""
+        repository.save(playing_state, "game_a.json")  # type: ignore[union-attr]
+        result = repository.list_saves()  # type: ignore[union-attr]
+        assert result == ["game_a.json"]
+
+    def test_list_saves_newest_first(
+        self, repository: object, playing_state: object
+    ) -> None:
+        """list_saves() returns the most recently modified file first."""
+        import time
+
+        repository.save(playing_state, "old.json")  # type: ignore[union-attr]
+        time.sleep(0.01)
+        repository.save(playing_state, "new.json")  # type: ignore[union-attr]
+
+        result = repository.list_saves()  # type: ignore[union-attr]
+        assert result[0] == "new.json"
+        assert result[1] == "old.json"
+
+    def test_list_saves_round_trips_with_load(
+        self, repository: object, playing_state: object
+    ) -> None:
+        """Each name returned by list_saves() can be passed to load()."""
+        repository.save(playing_state, "roundtrip.json")  # type: ignore[union-attr]
+        names = repository.list_saves()  # type: ignore[union-attr]
+        assert len(names) == 1
+        loaded = repository.load(names[0])  # type: ignore[union-attr]
+        assert loaded == playing_state
+
+
+# ---------------------------------------------------------------------------
 # US-601 AC-7: No pickle usage (enforced by ruff S301 separately)
 # ---------------------------------------------------------------------------
 

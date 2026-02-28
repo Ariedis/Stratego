@@ -215,7 +215,7 @@ class MainMenuScreen(Screen):
             most_recent = self._game_context.repository.get_most_recent_save()
             if most_recent is not None:
                 continue_disabled = False
-                continue_action = lambda: self._on_continue(most_recent)  # noqa: E731
+                continue_action = lambda: self._on_continue(most_recent.name)  # noqa: E731
         except Exception:  # noqa: BLE001,S110
             pass
 

@@ -254,6 +254,54 @@ class _GameContext:
         )
         screen_manager.push(setup_screen)
 
+    def resume_from_state(self, game_state: GameState, screen_manager: Any) -> None:
+        """Resume a previously saved game session and push ``PlayingScreen``.
+
+        Creates a new ``GameController`` from *game_state*, updates the shared
+        ``TurnManager`` proxy if the saved state contains an AI player, and
+        pushes ``PlayingScreen`` onto the ``ScreenManager``.
+
+        Args:
+            game_state: The :class:`~src.domain.game_state.GameState` loaded
+                from a save file.
+            screen_manager: The ``ScreenManager`` that receives the new
+                ``PlayingScreen``.
+        """
+        import src.domain.rules_engine as _rules_engine
+        from src.application.event_bus import EventBus
+        from src.application.game_controller import GameController
+        from src.application.turn_manager import TurnManager
+        from src.domain.enums import PlayerType as _PlayerType
+        from src.presentation.screens.playing_screen import PlayingScreen
+
+        event_bus = EventBus()
+        controller: GameController = GameController(game_state, event_bus, _rules_engine)
+        self._controller = controller
+
+        # Re-enable AI turn management if the saved state had an AI player.
+        blue_player = next(
+            (p for p in game_state.players if p.side == PlayerSide.BLUE), None
+        )
+        ai_types = {_PlayerType.AI_EASY, _PlayerType.AI_MEDIUM, _PlayerType.AI_HARD}
+        if blue_player is not None and blue_player.player_type in ai_types:
+            from src.ai.ai_orchestrator import AIOrchestrator
+
+            ai_orch = AIOrchestrator()
+            turn_manager = TurnManager(controller, event_bus, ai_orch)
+            self._turn_manager_proxy.active = turn_manager
+        else:
+            self._turn_manager_proxy.active = None
+
+        playing_screen = PlayingScreen(
+            controller=controller,
+            screen_manager=screen_manager,
+            event_bus=event_bus,
+            renderer=self._renderer_adapter,
+            viewing_player=PlayerSide.RED,
+            game_context=self,
+        )
+        screen_manager.push(playing_screen)
+
 
 # ---------------------------------------------------------------------------
 # Launch helpers
