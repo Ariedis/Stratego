@@ -90,5 +90,4 @@ jobs:
               title,
               body,
               labels: ['bug', 'ci-failure'],
-              assignees: ['copilot'],
             });
