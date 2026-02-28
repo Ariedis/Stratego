@@ -29,6 +29,15 @@ _ARMY_NAME_MIN = 1
 _ARMY_NAME_MAX = 64
 _DISPLAY_NAME_MAX = 32
 
+# Task validation limits (US-802).
+_TASK_DESCRIPTION_MIN = 1
+_TASK_DESCRIPTION_MAX = 120
+
+# Supported task image extensions (US-802).
+_SUPPORTED_TASK_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
+    {".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+)
+
 
 @dataclass(frozen=True)
 class ValidationError:
@@ -42,6 +51,85 @@ class ValidationError:
 
     field: str
     message: str
+
+
+def _validate_unit_tasks(rank_key: str, unit_data: dict[str, object]) -> None:
+    """Log warnings for any invalid task entries in *unit_data*.
+
+    Task validation issues produce log warnings only — they never add to the
+    mod-level :class:`ValidationError` list so that a single bad task cannot
+    block an otherwise valid mod from loading.  The mod loader is responsible
+    for skipping invalid tasks or treating bad image paths as missing.
+
+    Rules (US-802):
+    - ``description`` must be 1–120 characters; otherwise the task is skipped.
+    - ``image`` must be a relative path with no ``..`` segments and no leading
+      ``/``; otherwise the image is treated as missing.
+    - ``image`` extension must be in the supported set; otherwise treated as
+      missing.
+
+    Args:
+        rank_key: Rank name string (e.g. ``"LIEUTENANT"``) used in log messages.
+        unit_data: The unit's ``dict`` entry from the parsed manifest.
+    """
+    from pathlib import Path as _Path
+
+    tasks_raw = unit_data.get("tasks")
+    if not isinstance(tasks_raw, list):
+        return
+
+    for i, task_entry in enumerate(tasks_raw):
+        if not isinstance(task_entry, dict):
+            continue
+
+        description = task_entry.get("description", "")
+        if not isinstance(description, str) or not (
+            _TASK_DESCRIPTION_MIN <= len(description) <= _TASK_DESCRIPTION_MAX
+        ):
+            logger.warning(
+                "mod_validator: %s.tasks[%d].description invalid "
+                "(must be %d–%d characters); task will be skipped.",
+                rank_key,
+                i,
+                _TASK_DESCRIPTION_MIN,
+                _TASK_DESCRIPTION_MAX,
+            )
+            continue
+
+        image_raw = task_entry.get("image")
+        if not isinstance(image_raw, str) or not image_raw:
+            continue
+
+        img_path = _Path(image_raw)
+        if img_path.is_absolute():
+            logger.warning(
+                "mod_validator: %s.tasks[%d].image '%s' is an absolute path; "
+                "image will be treated as missing.",
+                rank_key,
+                i,
+                image_raw,
+            )
+            continue
+
+        if ".." in img_path.parts:
+            logger.warning(
+                "mod_validator: %s.tasks[%d].image '%s' contains '..'; "
+                "image will be treated as missing.",
+                rank_key,
+                i,
+                image_raw,
+            )
+            continue
+
+        if img_path.suffix.lower() not in _SUPPORTED_TASK_IMAGE_EXTENSIONS:
+            logger.warning(
+                "mod_validator: %s.tasks[%d].image '%s' has unsupported extension '%s'; "
+                "image will be treated as missing.",
+                rank_key,
+                i,
+                image_raw,
+                img_path.suffix,
+            )
 
 
 def validate_manifest(manifest: dict[str, object]) -> list[ValidationError]:
@@ -112,5 +200,8 @@ def validate_manifest(manifest: dict[str, object]) -> list[ValidationError]:
                         ),
                     )
                 )
+
+            # Validate task entries — issues produce warnings, not blocking errors (US-802).
+            _validate_unit_tasks(rank_key, unit_data)
 
     return errors

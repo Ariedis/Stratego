@@ -1,13 +1,13 @@
 """
 src/domain/army_mod.py
 
-ArmyMod and UnitCustomisation domain value objects.
+ArmyMod, UnitCustomisation, and UnitTask domain value objects.
 
 These models are part of the domain layer and carry no I/O or pygame
 dependencies.  They describe the cosmetic overrides a mod may supply for
-each piece rank.
+each piece rank, including optional unit tasks for the task-popup feature.
 
-Specification: custom_armies.md §7
+Specification: custom_armies.md §7; ux-wireframe-task-popup.md §7.2–§7.3
 """
 from __future__ import annotations
 
@@ -15,6 +15,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.domain.enums import Rank
+
+
+@dataclass(frozen=True)
+class UnitTask:
+    """A single physical task assigned to a player on unit capture.
+
+    Attributes:
+        description: Text wording of the task (1–120 characters).
+        image_path: Absolute path to the task image, or ``None`` when no
+            image was configured or the image failed validation.
+    """
+
+    description: str
+    image_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -29,12 +43,16 @@ class UnitCustomisation:
         image_paths: Relative image file paths found for this rank inside the
             mod's ``images/<rank_lower>/`` folder.  Empty when no images are
             provided.
+        tasks: Optional list of :class:`UnitTask` objects that may be assigned
+            to the captured player when this unit wins a combat.  Empty when
+            no tasks are defined.
     """
 
     rank: Rank
     display_name: str
     display_name_plural: str = ""
     image_paths: tuple[Path, ...] = field(default_factory=tuple)
+    tasks: list[UnitTask] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Derive plural form from display_name when not explicitly provided."""
