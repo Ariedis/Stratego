@@ -253,7 +253,7 @@ class TaskPopupOverlay:
         self._heading_unit_text = f"{self._team_name} {capturing_unit_name.upper()}"
         self._subtitle_text = f"{capturing_unit_name} captured your {captured_unit_name}!"
         self._task_label = "Your task:"
-        self._task_description_text = self._task.description
+        self._task_description_text: str = self._task.description
         self._instruction_text = (
             "Complete this exercise before your opponent continues."
         )
