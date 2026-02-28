@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  issues: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -38,3 +41,37 @@ jobs:
             --cov=src \
             --cov-report=term-missing \
             -v
+
+      - name: Create issue on build failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `CI build failure on \`${context.ref}\` — ${context.sha.slice(0, 7)}`;
+            const body = [
+              '## CI Build Failure',
+              '',
+              `A CI build failure was detected on the \`${context.ref}\` branch.`,
+              '',
+              `| Field | Value |`,
+              `|-------|-------|`,
+              `| **Run** | [View workflow run](${runUrl}) |`,
+              `| **Commit** | \`${context.sha}\` |`,
+              `| **Triggered by** | @${context.actor} |`,
+              '',
+              '## Action Required',
+              '',
+              'Please investigate the failed steps in the workflow run linked above and apply the necessary fixes.',
+              '',
+              '_This issue was automatically created by the CI pipeline and assigned to the software developer agent for triage._',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['bug', 'ci-failure'],
+              assignees: ['copilot'],
+            });
