@@ -30,7 +30,9 @@ except ImportError:
 
 # Feature flag: whether task-specific validation is implemented in mod_validator.
 try:
-    from src.infrastructure.mod_validator import _TASK_DESCRIPTION_MAX  # type: ignore[attr-defined]
+    from src.infrastructure.mod_validator import (  # type: ignore[attr-defined]
+        _TASK_DESCRIPTION_MAX as _TASK_DESCRIPTION_MAX,
+    )
 
     _TASK_VALIDATION_AVAILABLE = True
 except (ImportError, AttributeError):
@@ -453,7 +455,7 @@ class TestModValidatorTaskImageExtension:
         """AC-6 (inverse): Supported extensions do not trigger a warning."""
         manifest = self._manifest_with_image(valid_image)
         with caplog.at_level(logging.WARNING):
-            errors = validate_manifest(manifest)  # type: ignore[misc]
+            validate_manifest(manifest)  # type: ignore[misc]
         # There should be no task-image-extension warning
         ext_warnings = [
             r for r in caplog.records

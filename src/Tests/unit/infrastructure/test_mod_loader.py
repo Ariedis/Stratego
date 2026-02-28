@@ -31,7 +31,7 @@ except ImportError:
 
 # Feature flag: whether UnitTask / tasks field are implemented in the domain.
 try:
-    from src.domain.army_mod import UnitCustomisation, UnitTask  # type: ignore[attr-defined]
+    from src.domain.army_mod import UnitCustomisation  # type: ignore[attr-defined]
 
     _TASK_FEATURE_AVAILABLE = (
         "tasks" in getattr(UnitCustomisation, "__dataclass_fields__", {})

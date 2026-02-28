@@ -17,7 +17,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
-    from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay  # type: ignore[import]
+    from src.presentation.overlays.task_popup_overlay import (
+        TaskPopupOverlay,  # type: ignore[import]
+    )
 
     _OVERLAY_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
