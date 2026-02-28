@@ -102,8 +102,11 @@ class SpriteManager:
     to the generic ``asset_dir/pieces/<rank>/<rank>.png`` and ultimately to a
     solid-colour placeholder.  Board tiles are loaded from
     ``asset_dir/board/`` (``cell_light.png``, ``cell_dark.png``,
-    ``cell_lake.png``, ``cell_hidden.png``) with solid-colour placeholders as
-    fallback.  The *side* sub-directory is populated by ``generate_assets.py``.
+    ``cell_lake.png``) with solid-colour placeholders as fallback.  The hidden
+    (fog-of-war) surface is built from a generic piece image tinted grey so
+    that hidden opponent pieces appear as greyed-out pieces rather than a plain
+    dark square.  The *side* sub-directory is populated by
+    ``generate_assets.py``.
     """
 
     def __init__(self, asset_dir: Path) -> None:
@@ -114,9 +117,7 @@ class SpriteManager:
         """
         self._asset_dir = asset_dir
         self._cache: dict[Rank | tuple[Rank, PlayerSide], Any] = {}
-        self._hidden_surface: Any = self._load_board_surface(
-            "cell_hidden.png", (40, 40, 40)
-        )
+        self._hidden_surface: Any = self._load_hidden_piece_surface()
         self._lake_surface: Any = self._load_board_surface(
             "cell_lake.png", (0, 100, 200)
         )
@@ -359,6 +360,28 @@ class SpriteManager:
             except Exception:  # noqa: BLE001, S110
                 logger.debug("SpriteManager: pygame Surface unavailable, using mock")
         return _MockSurface(colour)
+
+    def _load_hidden_piece_surface(self) -> Any:
+        """Return a grey piece-shaped surface for fog-of-war rendering.
+
+        Tries to load the first available generic piece image and applies a
+        grey tint so that hidden opponent pieces appear as greyed-out pieces
+        rather than a plain dark square.  Falls back to a medium-grey
+        placeholder when no piece images are present.
+        """
+        grey = (150, 150, 150)
+        for rank in (Rank.SCOUT, Rank.MINER, Rank.SERGEANT, Rank.CAPTAIN):
+            rank_name = rank.name.lower()
+            image_path = self._asset_dir / "pieces" / rank_name / f"{rank_name}.png"
+            if _PYGAME_AVAILABLE and image_path.exists():
+                try:
+                    surface = _pygame.image.load(str(image_path))
+                    tinted = surface.copy()
+                    tinted.fill(grey, special_flags=_pygame.BLEND_RGB_MULT)
+                    return tinted
+                except Exception:  # noqa: BLE001
+                    logger.debug("SpriteManager: failed to load piece image for hidden surface")
+        return self._make_placeholder((140, 140, 140))
 
     def _load_board_surface(
         self,
