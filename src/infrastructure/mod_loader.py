@@ -16,10 +16,15 @@ import logging
 import re
 from pathlib import Path
 
-from src.domain.army_mod import ArmyMod, UnitCustomisation
+from src.domain.army_mod import ArmyMod, UnitCustomisation, UnitTask
 from src.domain.classic_army import ClassicArmy
 from src.domain.enums import Rank
-from src.infrastructure.mod_validator import validate_manifest
+from src.infrastructure.mod_validator import (
+    _SUPPORTED_TASK_IMAGE_EXTENSIONS,
+    _TASK_DESCRIPTION_MAX,
+    _TASK_DESCRIPTION_MIN,
+    validate_manifest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,69 @@ _NORMALISE_RE = re.compile(r"[-\s]+")
 def _normalise_mod_id(folder_name: str) -> str:
     """Return a canonical mod_id for *folder_name*."""
     return _NORMALISE_RE.sub("_", folder_name.lower())
+
+
+def _parse_tasks(unit_data: dict[str, object], mod_dir: Path) -> list[UnitTask]:
+    """Parse the ``tasks`` array from a unit entry into a list of :class:`UnitTask`.
+
+    Applies the same validation rules as :func:`mod_validator._validate_unit_tasks`:
+
+    * Tasks with invalid descriptions (empty or > 120 chars) are skipped.
+    * Tasks with unsafe image paths (absolute paths or ``..`` traversal) have
+      their ``image_path`` set to ``None`` (placeholder shown at runtime).
+    * Tasks with unsupported image extensions also get ``image_path=None``.
+
+    Args:
+        unit_data: The unit's ``dict`` entry from the parsed manifest.
+        mod_dir: Absolute path to the mod's root folder used to resolve
+            relative image paths.
+
+    Returns:
+        A (possibly empty) list of :class:`UnitTask` instances.
+    """
+    tasks_raw = unit_data.get("tasks")
+    if not isinstance(tasks_raw, list):
+        return []
+
+    result: list[UnitTask] = []
+    for task_entry in tasks_raw:
+        if not isinstance(task_entry, dict):
+            continue
+
+        description = task_entry.get("description", "")
+        if not isinstance(description, str) or not (
+            _TASK_DESCRIPTION_MIN <= len(description) <= _TASK_DESCRIPTION_MAX
+        ):
+            logger.warning(
+                "mod_loader: skipping task — description invalid (must be %d–%d chars).",
+                _TASK_DESCRIPTION_MIN,
+                _TASK_DESCRIPTION_MAX,
+            )
+            continue
+
+        image_path: Path | None = None
+        image_raw = task_entry.get("image")
+        if isinstance(image_raw, str) and image_raw:
+            img_relative = Path(image_raw)
+            if img_relative.is_absolute():
+                logger.warning(
+                    "mod_loader: task image '%s' is absolute; treating as missing.", image_raw
+                )
+            elif ".." in img_relative.parts:
+                logger.warning(
+                    "mod_loader: task image '%s' contains '..'; treating as missing.", image_raw
+                )
+            elif img_relative.suffix.lower() not in _SUPPORTED_TASK_IMAGE_EXTENSIONS:
+                logger.warning(
+                    "mod_loader: task image '%s' has unsupported extension; treating as missing.",
+                    image_raw,
+                )
+            else:
+                image_path = mod_dir / image_raw
+
+        result.append(UnitTask(description=description, image_path=image_path))
+
+    return result
 
 
 def _build_army_mod(mod_dir: Path, manifest: dict[str, object]) -> ArmyMod:
@@ -76,6 +144,7 @@ def _build_army_mod(mod_dir: Path, manifest: dict[str, object]) -> ArmyMod:
             display_name=display_name,
             display_name_plural=plural or display_name + "s",
             image_paths=image_paths,
+            tasks=_parse_tasks(unit_data, mod_dir) if isinstance(unit_data, dict) else [],
         )
 
     return ArmyMod(

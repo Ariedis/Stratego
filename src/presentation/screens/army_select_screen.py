@@ -80,6 +80,10 @@ class ArmySelectScreen(Screen):
         self._player1_army: str = _CLASSIC_ARMY_NAME
         self._player2_army: str = _CLASSIC_ARMY_NAME
 
+        # Task notice state (US-807)
+        self._show_task_notice_player1: bool = False
+        self._show_task_notice_player2: bool = False
+
         self._font_title: Any = None
         self._font_medium: Any = None
         self._font_small: Any = None
@@ -99,6 +103,49 @@ class ArmySelectScreen(Screen):
     def player2_army(self) -> str:
         """Selected army name for Player 2 (may equal Player 1 in 2-player mode)."""
         return self._player2_army
+
+    @property
+    def show_task_notice_player1(self) -> bool:
+        """True when Player 1's selected army has at least one unit with tasks (US-807)."""
+        return self._show_task_notice_player1
+
+    @property
+    def show_task_notice_player2(self) -> bool:
+        """True when Player 2's selected army has at least one unit with tasks (US-807)."""
+        return self._show_task_notice_player2
+
+    @property
+    def task_notice_text(self) -> str:
+        """Text shown in the preview panel when an army includes unit tasks (US-807)."""
+        return "\u2139 This army includes unit tasks"
+
+    @property
+    def task_notice_tooltip(self) -> str:
+        """Tooltip explaining the task notice (US-807 AC-3)."""
+        return (
+            "When a unit with tasks captures an enemy piece, you will be asked "
+            "to complete a physical exercise before the game continues."
+        )
+
+    def select_army(self, player: int, army_mod: Any) -> None:
+        """Update the selected army for *player* and refresh the task notice.
+
+        Args:
+            player: ``1`` for Player 1, ``2`` for Player 2.
+            army_mod: An :class:`~src.domain.army_mod.ArmyMod` instance (or
+                a duck-typed equivalent) to inspect for task configuration.
+        """
+        has_tasks = any(
+            len(getattr(uc, "tasks", [])) > 0
+            for uc in getattr(army_mod, "unit_customisations", {}).values()
+        )
+        if player == 1:
+            self._player1_army = getattr(army_mod, "army_name", _CLASSIC_ARMY_NAME)
+            self._show_task_notice_player1 = has_tasks
+        elif player == 2:
+            self._player2_army = getattr(army_mod, "army_name", _CLASSIC_ARMY_NAME)
+            self._show_task_notice_player2 = has_tasks
+
 
     # ------------------------------------------------------------------
     # Screen lifecycle

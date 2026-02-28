@@ -7,11 +7,12 @@ Specification: screen_flow.md §3.7
 from __future__ import annotations
 
 import logging
+import random
 from typing import Any
 
 from src.application.event_bus import EventBus
 from src.application.events import CombatResolved, GameOver, InvalidMove, PieceMoved, TurnChanged
-from src.domain.enums import PlayerSide, Rank
+from src.domain.enums import PlayerSide, PlayerType, Rank
 from src.domain.game_state import GameState
 from src.domain.piece import Position
 from src.presentation.font_utils import load_font
@@ -51,6 +52,11 @@ _BTN_DANGER_COLOUR = (120, 40, 40)
 _BTN_DANGER_HOVER_COLOUR = (180, 60, 60)
 _STATUS_RED = (200, 60, 60)
 _STATUS_BLUE = (60, 100, 200)
+
+# Re-highlight colours for post-popup dismissal (US-808)
+_COLOUR_MOVE_LAST_FROM = (230, 126, 34)   # #E67E22
+_COLOUR_MOVE_LAST_TO = (243, 156, 18)     # #F39C12
+_REHIGHLIGHT_DURATION_MS = 2000           # milliseconds
 
 # Friendly player names (H1.4).
 _PLAYER_NAMES: dict[PlayerSide, str] = {
@@ -148,6 +154,18 @@ class PlayingScreen(Screen):
         self._mouse_pos: tuple[int, int] = (0, 0)
         self._cell_w: int = 0
         self._cell_h: int = 0
+
+        # Task popup state (US-804)
+        self.popup_active: bool = False
+        self._popup: Any = None
+        self._active_task: Any = None
+
+        # Re-highlight state (US-808)
+        self.post_popup_rehighlight_timer: int = 0
+        self.rehighlight_from_colour: tuple[int, int, int] = _COLOUR_MOVE_LAST_FROM
+        self.rehighlight_to_colour: tuple[int, int, int] = _COLOUR_MOVE_LAST_TO
+        self._rehighlight_from_pos: Position | None = None
+        self._rehighlight_to_pos: Position | None = None
 
         # Subscribe to domain events.
         event_bus.subscribe(PieceMoved, self._on_piece_moved)
@@ -268,14 +286,30 @@ class PlayingScreen(Screen):
             if event.button == 1:
                 self._handle_left_click(event.pos)
 
-    def update(self, delta_time: float) -> None:
-        """Advance per-frame logic — tick the invalid-move flash timer.
+    def update(self, delta_time: float = 0.0, *, delta_time_ms: float | None = None) -> None:
+        """Advance per-frame logic — tick the invalid-move flash and re-highlight timers.
 
         Args:
             delta_time: Elapsed time since the previous frame, in seconds.
+                Used for the invalid-move flash (existing behaviour).
+            delta_time_ms: Elapsed time in milliseconds (keyword-only).
+                When provided, *delta_time* is ignored for the flash timer and
+                both timers are driven by the ms value.
         """
+        if delta_time_ms is not None:
+            dt_seconds = delta_time_ms / 1000.0
+            dt_ms = int(delta_time_ms)
+        else:
+            dt_seconds = delta_time
+            dt_ms = int(delta_time * 1000.0)
+
         if self._invalid_flash > 0:
-            self._invalid_flash = max(0.0, self._invalid_flash - delta_time)
+            self._invalid_flash = max(0.0, self._invalid_flash - dt_seconds)
+
+        if self.post_popup_rehighlight_timer > 0:
+            self.post_popup_rehighlight_timer = max(
+                0, self.post_popup_rehighlight_timer - dt_ms
+            )
 
     # ------------------------------------------------------------------
     # Event handlers (subscribed to EventBus)
@@ -296,7 +330,7 @@ class PlayingScreen(Screen):
         logger.debug("PlayingScreen: piece moved %s→%s", event.from_pos, event.to_pos)
 
     def _on_combat_resolved(self, event: CombatResolved) -> None:
-        """Handle combat resolution — update status and captured-pieces tray."""
+        """Handle combat resolution — update status, captured-pieces tray, and task popup."""
         winner_str = (
             str(event.winner.value) if event.winner is not None else "Draw"
         )
@@ -312,6 +346,9 @@ class PlayingScreen(Screen):
             # BLUE wins combat → BLUE captured a RED piece (the attacker).
             abbrev = _RANK_ABBREV.get(event.attacker.rank, "?")
             self._captured_by_blue.append(abbrev)
+
+        # Task popup trigger (US-804)
+        self._maybe_show_task_popup(event)
 
         logger.debug("PlayingScreen: combat resolved, winner=%s", event.winner)
 
@@ -340,6 +377,101 @@ class PlayingScreen(Screen):
         friendly_msg = _INVALID_MOVE_MESSAGES.get(event.reason, event.reason)
         self._status_message = friendly_msg
         logger.debug("PlayingScreen: invalid move — %s", event.reason)
+
+    # ------------------------------------------------------------------
+    # Task popup helpers (US-804, US-808)
+    # ------------------------------------------------------------------
+
+    def _get_unit_customisation(self, rank: Rank) -> Any:
+        """Return the :class:`~src.domain.army_mod.UnitCustomisation` for *rank*.
+
+        The default implementation returns ``None`` (no custom army is loaded).
+        Tests patch this method to return specific customisation objects without
+        requiring a real army mod to be loaded.
+
+        Args:
+            rank: The :class:`~src.domain.enums.Rank` to look up.
+
+        Returns:
+            A :class:`~src.domain.army_mod.UnitCustomisation` instance, or
+            ``None`` if no customisation is available.
+        """
+        return None
+
+    def _maybe_show_task_popup(self, event: CombatResolved) -> None:
+        """Conditionally show the task popup after combat resolution (US-804).
+
+        Trigger conditions (all must be true):
+        1. There is a winner (not a draw).
+        2. The captured player is of type ``PlayerType.HUMAN``.
+        3. The capturing unit's :class:`~src.domain.army_mod.UnitCustomisation`
+           has at least one task configured.
+
+        Args:
+            event: The resolved :class:`~src.application.events.CombatResolved` event.
+        """
+        if event.winner is None:
+            return  # Draw — no capture
+
+        # Identify the capturing and captured pieces.
+        if event.winner == event.attacker.owner:
+            capturing_piece = event.attacker
+            captured_piece = event.defender
+        else:
+            capturing_piece = event.defender
+            captured_piece = event.attacker
+
+        # Check that the captured player is human.
+        state = self._controller.current_state
+        captured_side = captured_piece.owner
+        try:
+            captured_player = state.players.get(captured_side)
+        except AttributeError:
+            return
+
+        if captured_player is None:
+            return
+        if getattr(captured_player, "player_type", None) != PlayerType.HUMAN:
+            return  # AI captured — no popup
+
+        # Check that the capturing unit has tasks configured.
+        customisation = self._get_unit_customisation(capturing_piece.rank)
+        tasks = getattr(customisation, "tasks", [])
+        if not tasks:
+            return  # No tasks — no popup
+
+        # Select one task at random (US-804 AC-7).
+        task = random.choice(tasks)  # noqa: S311
+        self._active_task = task
+        self.popup_active = True
+
+        logger.debug(
+            "PlayingScreen: task popup triggered for rank=%s task='%s'",
+            capturing_piece.rank,
+            task.description,
+        )
+
+    def dismiss_popup(self) -> None:
+        """Dismiss the active task popup and start the re-highlight timer (US-808).
+
+        Called by the popup's ``on_dismiss`` callback or directly by tests.
+        After dismissal:
+        - ``popup_active`` is set to ``False``.
+        - ``post_popup_rehighlight_timer`` is reset to 2000 ms.
+        - Normal board input is restored.
+        """
+        self.popup_active = False
+        self._popup = None
+        self.post_popup_rehighlight_timer = _REHIGHLIGHT_DURATION_MS
+        logger.debug("PlayingScreen: task popup dismissed; rehighlight timer started.")
+
+    def cancel_rehighlight(self) -> None:
+        """Cancel the post-popup re-highlight timer (US-808 AC-4).
+
+        Called when the player starts a new move before the 2-second timer
+        expires, so that the new move's highlights replace the re-highlight.
+        """
+        self.post_popup_rehighlight_timer = 0
 
     # ------------------------------------------------------------------
     # Click handling
