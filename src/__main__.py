@@ -201,6 +201,8 @@ class _GameContext:
         game_mode: str,
         ai_difficulty: PlayerType | None,
         screen_manager: Any,
+        player1_army: Any = None,
+        player2_army: Any = None,
     ) -> None:
         """Create a fresh game session and push ``SetupScreen``.
 
@@ -212,6 +214,8 @@ class _GameContext:
                 for a two-player game.
             screen_manager: The ``ScreenManager`` that receives the new
                 ``SetupScreen``.
+            player1_army: The ``ArmyMod`` selected by Player 1.
+            player2_army: The ``ArmyMod`` selected by Player 2.
         """
         import src.domain.rules_engine as _rules_engine
         from src.application.event_bus import EventBus

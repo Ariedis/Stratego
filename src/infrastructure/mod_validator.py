@@ -31,7 +31,7 @@ _DISPLAY_NAME_MAX = 32
 
 # Task validation limits (US-802).
 _TASK_DESCRIPTION_MIN = 1
-_TASK_DESCRIPTION_MAX = 120
+_TASK_DESCRIPTION_MAX = 400
 
 # Supported task image extensions (US-802).
 _SUPPORTED_TASK_IMAGE_EXTENSIONS: frozenset[str] = frozenset(

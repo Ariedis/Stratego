@@ -42,7 +42,7 @@ def _build_classic_army() -> ArmyMod:
     }
     return ArmyMod(
         mod_id="classic",
-        army_name="Classic",
+        army_name="Classic Army",
         unit_customisations=customisations,
         mod_directory=None,
         author=None,

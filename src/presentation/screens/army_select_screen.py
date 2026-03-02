@@ -6,8 +6,11 @@ Specification: screen_flow.md §3.3; ux-wireframe-army-select.md
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from src.domain.classic_army import ClassicArmy
+from src.infrastructure.mod_loader import discover_mods
 from src.presentation.font_utils import load_font
 from src.presentation.screens.base import Screen
 
@@ -16,10 +19,12 @@ try:
     import pygame as _pygame
 
     _QUIT = _pygame.QUIT
+    _KEYDOWN = _pygame.KEYDOWN
     _MOUSEBUTTONDOWN = _pygame.MOUSEBUTTONDOWN
 except ImportError:
     _pygame = None  # type: ignore[assignment]
     _QUIT = 256
+    _KEYDOWN = 768
     _MOUSEBUTTONDOWN = 1025
 
 # Colour palette (aligned to ux-visual-style-guide.md §2)
@@ -76,9 +81,12 @@ class ArmySelectScreen(Screen):
         self._game_mode = game_mode
         self._ai_difficulty = ai_difficulty
 
-        # Army selection (only Classic Army supported in v1.0)
-        self._player1_army: str = _CLASSIC_ARMY_NAME
-        self._player2_army: str = _CLASSIC_ARMY_NAME
+        # Available armies (loaded in on_enter)
+        self._available_armies: list[Any] = []
+        
+        # Selected army mods
+        self._player1_army_mod: Any = None
+        self._player2_army_mod: Any = None
 
         # Task notice state (US-807)
         self._show_task_notice_player1: bool = False
@@ -89,6 +97,9 @@ class ArmySelectScreen(Screen):
         self._font_small: Any = None
         self._buttons: list[dict[str, Any]] = []
         self._mouse_pos: tuple[int, int] = (0, 0)
+        
+        # Active selector for keyboard input (0 = Player 1, 1 = Player 2/AI)
+        self._active_selector: int = 0
 
     # ------------------------------------------------------------------
     # Public accessors (used by tests)
@@ -97,15 +108,22 @@ class ArmySelectScreen(Screen):
     @property
     def player1_army(self) -> str:
         """Selected army name for Player 1."""
-        return self._player1_army
+        return self._player1_army_mod.army_name if self._player1_army_mod else _CLASSIC_ARMY_NAME
 
     @property
     def player2_army(self) -> str:
         """Selected army name for Player 2 (may equal Player 1 in 2-player mode)."""
-        return self._player2_army
+        return self._player2_army_mod.army_name if self._player2_army_mod else _CLASSIC_ARMY_NAME
 
     @property
-    def show_task_notice_player1(self) -> bool:
+    def player1_army_mod(self) -> Any:
+        """Selected ArmyMod for Player 1."""
+        return self._player1_army_mod
+
+    @property
+    def player2_army_mod(self) -> Any:
+        """Selected ArmyMod for Player 2."""
+        return self._player2_army_mod
         """True when Player 1's selected army has at least one unit with tasks (US-807)."""
         return self._show_task_notice_player1
 
@@ -140,10 +158,10 @@ class ArmySelectScreen(Screen):
             for uc in getattr(army_mod, "unit_customisations", {}).values()
         )
         if player == 1:
-            self._player1_army = getattr(army_mod, "army_name", _CLASSIC_ARMY_NAME)
+            self._player1_army_mod = army_mod
             self._show_task_notice_player1 = has_tasks
         elif player == 2:
-            self._player2_army = getattr(army_mod, "army_name", _CLASSIC_ARMY_NAME)
+            self._player2_army_mod = army_mod
             self._show_task_notice_player2 = has_tasks
 
 
@@ -152,7 +170,7 @@ class ArmySelectScreen(Screen):
     # ------------------------------------------------------------------
 
     def on_enter(self, data: dict[str, Any]) -> None:
-        """Initialise fonts and build the button layout.
+        """Initialise fonts, load available armies, and build the button layout.
 
         Args:
             data: Context data from ``StartGameScreen.on_exit()``.
@@ -162,6 +180,17 @@ class ArmySelectScreen(Screen):
             self._game_mode = data["game_mode"]
         if "ai_difficulty" in data:
             self._ai_difficulty = data["ai_difficulty"]
+
+        # Load available armies
+        self._available_armies = [ClassicArmy.get()]
+        mod_dir = Path("mods")
+        if mod_dir.exists():
+            self._available_armies.extend(discover_mods(mod_dir))
+        
+        # Set default selections to Classic Army
+        classic_army = self._available_armies[0]
+        self._player1_army_mod = classic_army
+        self._player2_army_mod = classic_army
 
         if _pygame is None:
             return
@@ -183,8 +212,8 @@ class ArmySelectScreen(Screen):
         return {
             "game_mode": self._game_mode,
             "ai_difficulty": self._ai_difficulty,
-            "player1_army": self._player1_army,
-            "player2_army": self._player2_army,
+            "player1_army": self._player1_army_mod,
+            "player2_army": self._player2_army_mod,
         }
 
     def render(self, surface: Any) -> None:
@@ -200,8 +229,7 @@ class ArmySelectScreen(Screen):
         surface.fill(_BG_COLOUR)
 
         # Screen title
-        is_two_player = self._game_mode != "VS_AI"
-        title_text = "Choose Your Armies" if is_two_player else "Choose Your Army"
+        title_text = "Choose Your Armies"  # Always plural now
         if self._font_title is not None:
             title_surf = self._font_title.render(title_text, True, _TITLE_COLOUR)
             surface.blit(title_surf, title_surf.get_rect(center=(w // 2, 60)))
@@ -212,17 +240,23 @@ class ArmySelectScreen(Screen):
             p1_label = self._font_medium.render(
                 "Player 1 \u2014 Red Army", True, p1_colour
             )
-            if is_two_player:
+            if self._game_mode == "TWO_PLAYER":
                 surface.blit(p1_label, (w // 4 - p1_label.get_width() // 2, 130))
-            else:
-                surface.blit(p1_label, p1_label.get_rect(center=(w // 2, 130)))
+            else:  # VS_AI mode
+                surface.blit(p1_label, (w // 4 - p1_label.get_width() // 2, 130))
 
-            if is_two_player:
+            if self._game_mode == "TWO_PLAYER":
                 p2_colour = _TEAM_BLUE_COLOUR
                 p2_label = self._font_medium.render(
                     "Player 2 \u2014 Blue Army", True, p2_colour
                 )
                 surface.blit(p2_label, (3 * w // 4 - p2_label.get_width() // 2, 130))
+            else:  # VS_AI mode
+                ai_colour = _TEAM_BLUE_COLOUR
+                ai_label = self._font_medium.render(
+                    "AI \u2014 Blue Army", True, ai_colour
+                )
+                surface.blit(ai_label, (3 * w // 4 - ai_label.get_width() // 2, 130))
 
         # Preview panel — Classic Army info
         preview_rect = _pygame.Rect(w // 2 - 400, 240, 800, 200)
@@ -230,22 +264,44 @@ class ArmySelectScreen(Screen):
         _pygame.draw.rect(surface, _PANEL_BORDER_COLOUR, preview_rect, 1, border_radius=8)
 
         if self._font_medium is not None and self._font_small is not None:
+            # Show the army of the active selector
+            if self._active_selector == 0:
+                current_army = self._player1_army_mod
+                selector_name = "Player 1"
+            else:
+                current_army = self._player2_army_mod
+                selector_name = "Player 2" if self._game_mode == "TWO_PLAYER" else "AI"
+            
             army_name = self._font_medium.render(
-                _CLASSIC_ARMY_NAME, True, _TITLE_COLOUR
+                f"{selector_name}: {current_army.army_name if current_army else _CLASSIC_ARMY_NAME}", True, _TITLE_COLOUR
             )
             surface.blit(army_name, (preview_rect.x + 16, preview_rect.y + 16))
-            desc_lines = _CLASSIC_ARMY_DESCRIPTION.split("\n")
+            
+            # Description
+            description = getattr(current_army, 'description', None) if current_army else None
+            if description:
+                desc_lines = description.split("\n")
+            else:
+                desc_lines = _CLASSIC_ARMY_DESCRIPTION.split("\n")
+            
             for i, line in enumerate(desc_lines):
                 desc_surf = self._font_small.render(line, True, _TEXT_SECONDARY)
                 surface.blit(
                     desc_surf,
                     (preview_rect.x + 16, preview_rect.y + 52 + i * 28),
                 )
+            
             # Custom army hint
-            hint = self._font_small.render(
-                "Add custom armies by placing .json files in your army mod folder.",
-                True, _TEXT_SECONDARY,
-            )
+            if len(self._available_armies) > 1:
+                hint = self._font_small.render(
+                    f"Tab to switch selector, arrow keys to cycle through {len(self._available_armies)} armies.",
+                    True, _TEXT_SECONDARY,
+                )
+            else:
+                hint = self._font_small.render(
+                    "Add custom armies by placing .json files in your army mod folder.",
+                    True, _TEXT_SECONDARY,
+                )
             surface.blit(hint, (preview_rect.x + 16, preview_rect.y + 148))
 
         # Buttons
@@ -279,6 +335,44 @@ class ArmySelectScreen(Screen):
                 if btn["rect"].collidepoint(event.pos):
                     btn["action"]()
                     return
+
+        # Keyboard shortcuts for army selection (temporary until proper UI is implemented)
+        if event.type == _pygame.KEYDOWN:
+            if event.key == _pygame.K_TAB:
+                # Switch active selector
+                num_selectors = 2 if self._game_mode == "TWO_PLAYER" else 2  # Always 2 in current implementation
+                self._active_selector = (self._active_selector + 1) % num_selectors
+            elif event.key == _pygame.K_LEFT or event.key == _pygame.K_UP:
+                self._cycle_army(-1)
+            elif event.key == _pygame.K_RIGHT or event.key == _pygame.K_DOWN:
+                self._cycle_army(1)
+
+    def _cycle_army(self, direction: int) -> None:
+        """Cycle through available armies for the active selector.
+        
+        Args:
+            direction: +1 for next army, -1 for previous army
+        """
+        if not self._available_armies:
+            return
+        
+        # Determine which army mod to cycle
+        if self._active_selector == 0:
+            current_army = self._player1_army_mod
+        else:
+            current_army = self._player2_army_mod
+        
+        current_index = 0
+        for i, army in enumerate(self._available_armies):
+            if army.army_name == current_army.army_name:
+                current_index = i
+                break
+        
+        new_index = (current_index + direction) % len(self._available_armies)
+        new_army = self._available_armies[new_index]
+        
+        player_num = self._active_selector + 1
+        self.select_army(player_num, new_army)
 
     def update(self, delta_time: float) -> None:
         """Advance per-frame logic (no-op).
@@ -339,4 +433,6 @@ class ArmySelectScreen(Screen):
                 self._ai_difficulty if self._game_mode == GAME_MODE_VS_AI else None
             ),
             screen_manager=self._screen_manager,
+            player1_army=self._player1_army_mod,
+            player2_army=self._player2_army_mod,
         )
