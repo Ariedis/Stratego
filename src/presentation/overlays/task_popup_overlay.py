@@ -204,6 +204,14 @@ class TaskPopupOverlay:
         self._compute_text_content(capturing_side, capturing_unit_name, captured_unit_name)
         self._compute_handover_content(captured_player_side, game_mode)
 
+        # Fonts — initialised lazily; None in headless mode
+        self._font_heading: Any = None
+        self._font_unit: Any = None
+        self._font_body: Any = None
+        self._font_small: Any = None
+        self._font_btn: Any = None
+        self._init_fonts()
+
     # ------------------------------------------------------------------
     # Layout computation
     # ------------------------------------------------------------------
@@ -258,6 +266,22 @@ class TaskPopupOverlay:
             "Complete this exercise before your opponent continues."
         )
         self._complete_button_label = "Complete \u2713"
+
+    def _init_fonts(self) -> None:
+        """Initialise pygame fonts; no-op when pygame is unavailable."""
+        if _pygame is None:
+            return
+        try:
+            from src.presentation.font_utils import load_font
+
+            _pygame.font.init()
+            self._font_heading = load_font(_pygame.font, 14)
+            self._font_unit = load_font(_pygame.font, 18, bold=True)
+            self._font_body = load_font(_pygame.font, 16)
+            self._font_small = load_font(_pygame.font, 13)
+            self._font_btn = load_font(_pygame.font, 18, bold=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _compute_handover_content(
         self, captured_player_side: Any, game_mode: str | None
@@ -546,9 +570,143 @@ class TaskPopupOverlay:
         )
 
         # Complete button
+        btn_colour = (
+            COLOUR_BTN_HOVER if self._button_focused else COLOUR_BTN_PRIMARY
+        )
         _pygame.draw.rect(
             surface,
-            COLOUR_BTN_PRIMARY,
+            btn_colour,
             self._complete_button_rect,
             border_radius=self._BTN_BORDER_RADIUS,
         )
+        if self._button_focused:
+            _pygame.draw.rect(
+                surface,
+                COLOUR_FOCUS_RING,
+                self._complete_button_rect,
+                width=2,
+                border_radius=self._BTN_BORDER_RADIUS,
+            )
+
+        # ----------------------------------------------------------------
+        # Text rendering
+        # ----------------------------------------------------------------
+        WHITE = (255, 255, 255)
+        card_x = self._card_rect.x
+        card_y = self._card_rect.y
+
+        # --- Heading row ---------------------------------------------------
+        # Team colour dot
+        dot_y = card_y + self._HEADING_HEIGHT // 2
+        dot_x = card_x + self._TEAM_DOT_RADIUS + 16
+        _pygame.draw.circle(
+            surface, self._team_dot_colour, (dot_x, dot_y), self._TEAM_DOT_RADIUS
+        )
+
+        text_x = dot_x + self._TEAM_DOT_RADIUS + 10
+        if self._font_heading is not None:
+            # "TASK ASSIGNED BY" label (small secondary)
+            lbl_surf = self._font_heading.render(
+                self._heading_label, True, COLOUR_TEXT_SECONDARY
+            )
+            surface.blit(lbl_surf, (text_x, card_y + 14))
+        if self._font_unit is not None:
+            # "BLUE UNIT NAME" in team colour
+            unit_surf = self._font_unit.render(
+                self._heading_unit_text, True, self._team_dot_colour
+            )
+            surface.blit(unit_surf, (text_x, card_y + 32))
+
+        # --- Content row ---------------------------------------------------
+        content_y = card_y + self._HEADING_HEIGHT
+        img_panel = self._image_panel_rect
+
+        # Image / placeholder
+        if self._gif_frames and self._animation_active:
+            frame = self._gif_frames[self._current_frame_index]
+            scaled = _pygame.transform.smoothscale(
+                frame, (img_panel.width, img_panel.height)
+            )
+            surface.blit(scaled, (img_panel.x, img_panel.y))
+        elif self._gif_frames:
+            frame = self._gif_frames[0]
+            scaled = _pygame.transform.smoothscale(
+                frame, (img_panel.width, img_panel.height)
+            )
+            surface.blit(scaled, (img_panel.x, img_panel.y))
+        else:
+            # Image placeholder panel background
+            _pygame.draw.rect(
+                surface, COLOUR_PANEL, img_panel, border_radius=8
+            )
+            if self._font_unit is not None:
+                ph = self._font_unit.render(self.placeholder_text, True, COLOUR_TEXT_SECONDARY)
+                ph_rect = ph.get_rect(center=(img_panel.centerx, img_panel.centery))
+                surface.blit(ph, ph_rect)
+
+        # Text column — to the right of the image panel
+        txt_col_x = img_panel.x + img_panel.width + 16
+        txt_col_y = content_y + 14
+
+        # Subtitle
+        if self._font_small is not None:
+            sub_surf = self._font_small.render(
+                self._subtitle_text, True, COLOUR_TEXT_SECONDARY
+            )
+            surface.blit(sub_surf, (txt_col_x, txt_col_y))
+            txt_col_y += sub_surf.get_height() + 10
+
+        # "Your task:" label
+        if self._font_small is not None:
+            lbl_surf = self._font_small.render(
+                self._task_label, True, COLOUR_TEXT_SECONDARY
+            )
+            surface.blit(lbl_surf, (txt_col_x, txt_col_y))
+            txt_col_y += lbl_surf.get_height() + 4
+
+        # Task description (body, white) — simple word-wrap
+        if self._font_body is not None:
+            max_w = (
+                card_x + self._CARD_WIDTH - self._BTN_MARGIN - txt_col_x
+            )
+            words = self._task_description_text.split()
+            line = ""
+            for word in words:
+                test = (line + " " + word).strip()
+                if self._font_body.size(test)[0] <= max_w:
+                    line = test
+                else:
+                    if line:
+                        s = self._font_body.render(line, True, WHITE)
+                        surface.blit(s, (txt_col_x, txt_col_y))
+                        txt_col_y += s.get_height() + 2
+                    line = word
+            if line:
+                s = self._font_body.render(line, True, WHITE)
+                surface.blit(s, (txt_col_x, txt_col_y))
+                txt_col_y += s.get_height() + 8
+
+        # Instruction text
+        if self._font_small is not None:
+            inst_surf = self._font_small.render(
+                self._instruction_text, True, COLOUR_TEXT_SECONDARY
+            )
+            surface.blit(inst_surf, (txt_col_x, txt_col_y))
+            txt_col_y += inst_surf.get_height() + 6
+
+        # Handover prompt (2-player mode, US-809)
+        if self._show_handover_prompt and self._handover_prompt_text and self._font_small is not None:
+            hp_surf = self._font_small.render(
+                self._handover_prompt_text, True, COLOUR_TEXT_SECONDARY
+            )
+            surface.blit(hp_surf, (txt_col_x, txt_col_y))
+
+        # --- Button label --------------------------------------------------
+        if self._font_btn is not None:
+            btn_label_surf = self._font_btn.render(
+                self._complete_button_label, True, WHITE
+            )
+            lbl_rect = btn_label_surf.get_rect(
+                center=self._complete_button_rect.center
+            )
+            surface.blit(btn_label_surf, lbl_rect)
