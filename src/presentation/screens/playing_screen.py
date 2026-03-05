@@ -124,6 +124,8 @@ class PlayingScreen(Screen):
         viewing_player: PlayerSide = PlayerSide.RED,
         game_context: Any = None,
         undo_enabled: bool = False,
+        red_army_mod: Any = None,
+        blue_army_mod: Any = None,
     ) -> None:
         """Initialise the playing screen.
 
@@ -141,6 +143,8 @@ class PlayingScreen(Screen):
                 game-over screen.
             undo_enabled: Whether the Undo button should be shown in the
                 side panel.  Defaults to ``False``.
+            red_army_mod: The ArmyMod for the red player, or None for classic army.
+            blue_army_mod: The ArmyMod for the blue player, or None for classic army.
         """
         self._controller = controller
         self._screen_manager = screen_manager
@@ -149,6 +153,8 @@ class PlayingScreen(Screen):
         self._viewing_player = viewing_player
         self._game_context = game_context
         self._undo_enabled = undo_enabled
+        self._red_army_mod = red_army_mod
+        self._blue_army_mod = blue_army_mod
 
         self._selected_pos: Position | None = None
         self._invalid_flash: float = 0.0   # seconds remaining for red flash
@@ -268,6 +274,10 @@ class PlayingScreen(Screen):
         if self._font is not None and self._font_small is not None:
             self._render_panel(surface, panel_x, panel_w, h)
 
+        # Task popup overlay — drawn on top of everything else (US-804).
+        if self.popup_active and self._popup is not None:
+            self._popup.render(surface)
+
     def handle_event(self, event: Any) -> None:
         """Process a single input event.
 
@@ -275,6 +285,11 @@ class PlayingScreen(Screen):
             event: A pygame event (or ``None`` in headless mode).
         """
         if event is None or _pygame is None:
+            return
+
+        # Route all input to the task popup while it is visible (US-805).
+        if self.popup_active and self._popup is not None:
+            self._popup.handle_event(event)
             return
 
         if event.type == _MOUSEMOTION:
@@ -317,6 +332,10 @@ class PlayingScreen(Screen):
             self.post_popup_rehighlight_timer = max(
                 0, self.post_popup_rehighlight_timer - dt_ms
             )
+
+        # Advance GIF animation in the popup (US-806).
+        if self.popup_active and self._popup is not None:
+            self._popup.update(dt_ms)
 
     # ------------------------------------------------------------------
     # Event handlers (subscribed to EventBus)
@@ -389,20 +408,20 @@ class PlayingScreen(Screen):
     # Task popup helpers (US-804, US-808)
     # ------------------------------------------------------------------
 
-    def _get_unit_customisation(self, rank: Rank) -> Any:
-        """Return the :class:`~src.domain.army_mod.UnitCustomisation` for *rank*.
-
-        The default implementation returns ``None`` (no custom army is loaded).
-        Tests patch this method to return specific customisation objects without
-        requiring a real army mod to be loaded.
+    def _get_unit_customisation(self, rank: Rank, player_side: PlayerSide) -> Any:
+        """Return the :class:`~src.domain.army_mod.UnitCustomisation` for *rank* and *player_side*.
 
         Args:
             rank: The :class:`~src.domain.enums.Rank` to look up.
+            player_side: The player side whose army to check.
 
         Returns:
             A :class:`~src.domain.army_mod.UnitCustomisation` instance, or
             ``None`` if no customisation is available.
         """
+        army_mod = self._red_army_mod if player_side == PlayerSide.RED else self._blue_army_mod
+        if army_mod and hasattr(army_mod, 'unit_customisations'):
+            return army_mod.unit_customisations.get(rank)
         return None
 
     def _maybe_show_task_popup(self, event: CombatResolved) -> None:
@@ -428,21 +447,20 @@ class PlayingScreen(Screen):
             capturing_piece = event.defender
             captured_piece = event.attacker
 
-        # Check that the captured player is human.
+        # Check that the captured player is human (they are shown the task).
         state = self._controller.current_state
         captured_side = captured_piece.owner
-        try:
-            captured_player = state.players.get(captured_side)
-        except AttributeError:
-            return
-
+        captured_player = next(
+            (p for p in state.players if p.side == captured_side), None
+        )
         if captured_player is None:
             return
         if getattr(captured_player, "player_type", None) != PlayerType.HUMAN:
-            return  # AI captured — no popup
+            return  # AI piece captured — no popup
 
         # Check that the capturing unit has tasks configured.
-        customisation = self._get_unit_customisation(capturing_piece.rank)
+        capturing_side = capturing_piece.owner
+        customisation = self._get_unit_customisation(capturing_piece.rank, capturing_side)
         tasks = getattr(customisation, "tasks", [])
         if not tasks:
             return  # No tasks — no popup
@@ -451,6 +469,50 @@ class PlayingScreen(Screen):
         task = random.choice(tasks)  # noqa: S311
         self._active_task = task
         self.popup_active = True
+
+        # Build the overlay if pygame is available.
+        if _pygame is not None:
+            surface = _pygame.display.get_surface()
+            if surface is not None:
+                # Display names from army mods (fall back to rank name).
+                capturing_unit_name = getattr(
+                    customisation, "display_name", capturing_piece.rank.name.title()
+                )
+                captured_mod = (
+                    self._red_army_mod
+                    if captured_side == PlayerSide.RED
+                    else self._blue_army_mod
+                )
+                captured_custom = None
+                if captured_mod and hasattr(captured_mod, "unit_customisations"):
+                    captured_custom = captured_mod.unit_customisations.get(
+                        captured_piece.rank
+                    )
+                captured_unit_name = (
+                    getattr(captured_custom, "display_name", captured_piece.rank.name.title())
+                    if captured_custom
+                    else captured_piece.rank.name.title()
+                )
+
+                # Determine game mode from player types.
+                game_mode = "TWO_PLAYER"
+                for _p in state.players:
+                    if getattr(_p, "player_type", PlayerType.HUMAN) != PlayerType.HUMAN:
+                        game_mode = "VS_AI"
+                        break
+
+                from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay
+
+                self._popup = TaskPopupOverlay(
+                    surface=surface,
+                    task=task,
+                    capturing_side=capturing_side,
+                    capturing_unit_name=capturing_unit_name,
+                    captured_unit_name=captured_unit_name,
+                    captured_player_side=captured_side,
+                    game_mode=game_mode,
+                    on_dismiss=self.dismiss_popup,
+                )
 
         logger.debug(
             "PlayingScreen: task popup triggered for rank=%s task='%s'",

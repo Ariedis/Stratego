@@ -134,9 +134,9 @@ def _build_army_mod(mod_dir: Path, manifest: dict[str, object]) -> ArmyMod:
         image_paths: tuple[Path, ...] = ()
         if rank_image_dir.is_dir():
             image_paths = tuple(
-                p
+                p.relative_to(mod_dir)
                 for p in sorted(rank_image_dir.iterdir())
-                if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+                if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
             )
 
         customisations[rank] = UnitCustomisation(

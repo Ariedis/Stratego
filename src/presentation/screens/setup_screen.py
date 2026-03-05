@@ -622,6 +622,8 @@ class SetupScreen(Screen):
             renderer=self._renderer,
             viewing_player=self._viewing_player,
             game_context=self._game_context,
+            red_army_mod=self._game_context.red_army_mod if self._game_context else None,
+            blue_army_mod=self._game_context.blue_army_mod if self._game_context else None,
         )
         self._screen_manager.replace(playing_screen)
 

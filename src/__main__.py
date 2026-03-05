@@ -162,6 +162,7 @@ class _GameContext:
         asset_dir: Path,
         config: Config | None = None,
         repository: JsonRepository | None = None,
+        sprite_manager: Any = None,
     ) -> None:
         """Initialise the context with an existing controller.
 
@@ -189,12 +190,25 @@ class _GameContext:
             repository if repository is not None
             else JsonRepository(_DEFAULT_SAVE_DIR.expanduser())
         )
+        self._red_army_mod: Any = None
+        self._blue_army_mod: Any = None
+        self._sprite_manager: Any = sprite_manager
 
     # Expose current_state so GameLoop can call self._controller.current_state.
     @property
     def current_state(self) -> Any:
         """Delegate to the active controller's ``current_state``."""
         return self._controller.current_state
+
+    @property
+    def red_army_mod(self) -> Any:
+        """The ArmyMod selected by the red player."""
+        return self._red_army_mod
+
+    @property
+    def blue_army_mod(self) -> Any:
+        """The ArmyMod selected by the blue player."""
+        return self._blue_army_mod
 
     def start_new_game(
         self,
@@ -234,6 +248,21 @@ class _GameContext:
             initial_state, event_bus, _rules_engine
         )
         self._controller = controller
+        self._red_army_mod = player1_army
+        self._blue_army_mod = player2_army
+
+        # Preload piece images for the selected army mods.
+        if self._sprite_manager is not None:
+            self._sprite_manager.preload_classic()
+            for _mod in (player1_army, player2_army):
+                if _mod is not None:
+                    try:
+                        self._sprite_manager.preload_army(_mod)
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "_GameContext: failed to preload army mod '%s'; using classic sprites.",
+                            getattr(_mod, 'mod_id', _mod),
+                        )
 
         # Set up AI turn management if required.
         if game_mode == "VS_AI" and ai_difficulty is not None:
@@ -383,6 +412,7 @@ def _launch_pygame(config: Config, initial_state: GameState) -> None:
         renderer_adapter=renderer_adapter,
         asset_dir=asset_dir,
         config=config,
+        sprite_manager=sprite_manager,
     )
 
     # Start at the Main Menu (screen_flow.md §2).

@@ -115,15 +115,17 @@ def _make_controller(
     state.active_player = active_player
 
     red_player = MagicMock()
+    red_player.side = PlayerSide.RED
     red_player.player_type = (
         viewing_player_type if active_player == PlayerSide.RED else opponent_player_type
     )
     blue_player = MagicMock()
+    blue_player.side = PlayerSide.BLUE
     blue_player.player_type = (
         viewing_player_type if active_player == PlayerSide.BLUE else opponent_player_type
     )
 
-    state.players = {PlayerSide.RED: red_player, PlayerSide.BLUE: blue_player}
+    state.players = (red_player, blue_player)
     board_mock = MagicMock()
     sq_mock = MagicMock()
     sq_mock.piece = None
@@ -262,27 +264,27 @@ class TestTaskPopupSuppressedClassicArmy:
 
 
 # ---------------------------------------------------------------------------
-# US-804 AC-4: No popup when captured player is AI
+# US-804 AC-4: No popup when the captured piece belongs to an AI player
 # ---------------------------------------------------------------------------
 
 
 class TestTaskPopupSuppressedAiCaptured:
-    """AC-4: No popup when the captured player is AI."""
+    """AC-4: No popup when the captured piece belongs to an AI player."""
 
     def test_no_popup_when_ai_captured(
         self, event_bus: EventBus, mock_renderer: MagicMock
     ) -> None:
-        """AC-4: Human captures AI piece with tasks → no popup for AI defender."""
+        """AC-4: Human captures AI piece with tasks → no popup (AI has no one to show task to)."""
         screen = _make_playing_screen(
             event_bus,
             mock_renderer,
             active_player=PlayerSide.RED,
             viewing_player=PlayerSide.RED,
-            viewing_player_type=PlayerType.HUMAN,
-            opponent_player_type=PlayerType.AI_MEDIUM,
+            viewing_player_type=PlayerType.HUMAN,       # RED is human
+            opponent_player_type=PlayerType.AI_MEDIUM,  # BLUE is AI
         )
         attacker = _make_piece(Rank.LIEUTENANT, PlayerSide.RED)
-        defender = _make_piece(Rank.MINER, PlayerSide.BLUE)
+        defender = _make_piece(Rank.MINER, PlayerSide.BLUE)  # AI piece captured
 
         customisation = _make_customisation_with_tasks(Rank.LIEUTENANT)
 

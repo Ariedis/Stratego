@@ -35,7 +35,7 @@ _TASK_DESCRIPTION_MAX = 400
 
 # Supported task image extensions (US-802).
 _SUPPORTED_TASK_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 )
 
 
