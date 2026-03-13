@@ -217,7 +217,8 @@ def best_move(
         return None
 
     result: Move | None = None
-    _tt: dict[tuple[Any, PlayerSide], tuple[float, int, str]] = {}  # Shared TT across all iterative-deepening depths.
+    # Shared transposition table across all iterative-deepening depths.
+    _tt: dict[tuple[Any, PlayerSide], tuple[float, int, str]] = {}
 
     for depth in range(1, max_depth + 1):
         if time.monotonic() > deadline:

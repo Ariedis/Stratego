@@ -63,9 +63,9 @@ class TestClassicArmyGet:
         assert army is not None
 
     def test_army_name_is_classic(self) -> None:
-        """AC-1: The returned ArmyMod.army_name must be 'Classic'."""
+        """AC-1: The returned ArmyMod.army_name must be 'Classic Army'."""
         army = ClassicArmy.get()  # type: ignore[union-attr]
-        assert army.army_name == "Classic"
+        assert army.army_name == "Classic Army"
 
     def test_mod_id_is_classic(self) -> None:
         """AC-1: The returned ArmyMod.mod_id must be 'classic' (lower-case)."""

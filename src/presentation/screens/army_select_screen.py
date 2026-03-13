@@ -124,6 +124,9 @@ class ArmySelectScreen(Screen):
     def player2_army_mod(self) -> Any:
         """Selected ArmyMod for Player 2."""
         return self._player2_army_mod
+
+    @property
+    def show_task_notice_player1(self) -> bool:
         """True when Player 1's selected army has at least one unit with tasks (US-807)."""
         return self._show_task_notice_player1
 

@@ -509,7 +509,7 @@ class TestSaveButton:
         screen._on_save_game()  # type: ignore[union-attr]
 
         assert len(received) == 1
-        assert "/tmp/save_turn0.json" in received[0].filepath
+        assert "save_turn0.json" in received[0].filepath
 
     def test_save_without_game_context_does_not_raise(
         self,

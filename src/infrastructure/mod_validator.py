@@ -31,7 +31,7 @@ _DISPLAY_NAME_MAX = 32
 
 # Task validation limits (US-802).
 _TASK_DESCRIPTION_MIN = 1
-_TASK_DESCRIPTION_MAX = 400
+_TASK_DESCRIPTION_MAX = 120
 
 # Supported task image extensions (US-802).
 _SUPPORTED_TASK_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
@@ -101,7 +101,7 @@ def _validate_unit_tasks(rank_key: str, unit_data: dict[str, object]) -> None:
             continue
 
         img_path = _Path(image_raw)
-        if img_path.is_absolute():
+        if img_path.is_absolute() or image_raw.startswith("/"):
             logger.warning(
                 "mod_validator: %s.tasks[%d].image '%s' is an absolute path; "
                 "image will be treated as missing.",

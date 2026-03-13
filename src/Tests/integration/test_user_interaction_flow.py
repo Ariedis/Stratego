@@ -20,6 +20,7 @@ Specification: screen_flow.md §2–§4
 """
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -105,6 +106,8 @@ def _make_mock_game_context(
         game_mode: str,
         ai_difficulty: PlayerType | None,
         screen_manager: ScreenManager,  # noqa: ARG001
+        player1_army: Any = None,  # noqa: ARG001
+        player2_army: Any = None,  # noqa: ARG001
     ) -> None:
         from src.domain.board import Board
         from src.domain.game_state import GameState
