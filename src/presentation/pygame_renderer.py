@@ -22,25 +22,15 @@ _BOARD_FRACTION: float = 0.80
 _BOARD_ROWS: int = 10
 _BOARD_COLS: int = 10
 
-# Rank abbreviations rendered inside each friendly piece cell (wireframe §4).
-_RANK_ABBREV: dict[Rank, str] = {
-    Rank.MARSHAL: "Ma",
-    Rank.GENERAL: "Ge",
-    Rank.COLONEL: "Co",
-    Rank.MAJOR: "Mj",
-    Rank.CAPTAIN: "Ca",
-    Rank.LIEUTENANT: "Li",
-    Rank.SERGEANT: "Se",
-    Rank.MINER: "Mi",
-    Rank.SCOUT: "Sc",
-    Rank.SPY: "Sp",
-    Rank.BOMB: "Bm",
-    Rank.FLAG: "Fl",
+# Rank labels rendered at bottom-left of each visible piece cell.
+_RANK_LABEL: dict[Rank, str] = {
+    Rank.BOMB: "B",
+    Rank.FLAG: "F",
 }
+# All other ranks use str(rank.value) at render time.
 
-# Text colour for rank abbreviations drawn on piece tiles.
+# Text colour for rank labels drawn on piece tiles.
 _ABBREV_COLOUR = (255, 255, 255)
-_ABBREV_COLOUR_DARK = (20, 20, 20)
 _GRID_LINE_COLOUR = (35, 35, 35)
 
 
@@ -50,8 +40,8 @@ class PygameRenderer:
     The board is drawn in the left ``_BOARD_FRACTION`` portion of the window.
     Each of the 100 squares is drawn with a tile, and pieces are blitted on
     top.  Opponent unrevealed pieces use the hidden surface from
-    ``SpriteManager``.  Friendly piece cells have their rank abbreviation
-    drawn centred in the cell (wireframe §4).
+    ``SpriteManager``.  Friendly piece cells have their rank number
+    drawn at bottom-left of the cell (wireframe §4).
     """
 
     def __init__(self, screen: Any, sprite_manager: SpriteManager) -> None:
@@ -164,17 +154,13 @@ class PygameRenderer:
                     )
                     screen.blit(self._safe_scale(piece_surface, cell_w, cell_h), (x, y))
 
-                    # Draw rank abbreviation centred on visible (own or revealed) pieces.
+                    # Draw rank label at bottom-left of visible (own or revealed) pieces.
                     if show_revealed and _pg is not None and self._font is not None:
-                        abbrev = _RANK_ABBREV.get(piece.rank, "?")
-                        text_colour = (
-                            _ABBREV_COLOUR_DARK
-                            if piece.owner == PlayerSide.RED
-                            else _ABBREV_COLOUR
-                        )
-                        text_surf = self._font.render(abbrev, True, text_colour)
+                        label = _RANK_LABEL.get(piece.rank, str(piece.rank.value))
+                        text_surf = self._font.render(label, True, _ABBREV_COLOUR)
+                        padding = max(1, min(cell_w, cell_h) // 16)
                         text_rect = text_surf.get_rect(
-                            center=(x + cell_w // 2, y + cell_h // 2)
+                            bottomleft=(x + padding, y + cell_h - padding)
                         )
                         screen.blit(text_surf, text_rect)
 

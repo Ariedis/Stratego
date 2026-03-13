@@ -248,3 +248,50 @@ class TestSpriteManagerTinting:
         s1 = sprite_manager.get_surface(Rank.GENERAL, PlayerSide.RED, revealed=True)
         s2 = sprite_manager.get_surface(Rank.GENERAL, PlayerSide.RED, revealed=True)
         assert s1 is s2
+
+
+# ---------------------------------------------------------------------------
+# Mod army team tinting
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    not _preload_army_available,
+    reason="SpriteManager.preload_army not implemented yet",
+    strict=False,
+)
+class TestModArmyTeamTinting:
+    """preload_army() must cache separately tinted surfaces for RED and BLUE."""
+
+    def _make_army_mod_with_images(self, tmp_path: Path) -> object:
+        """Return an ArmyMod whose Marshal rank has one (placeholder) image file."""
+        from src.domain.army_mod import ArmyMod, UnitCustomisation
+
+        img_dir = tmp_path / "images" / "marshal"
+        img_dir.mkdir(parents=True)
+        img_file = img_dir / "marshal.png"
+        img_file.write_bytes(b"")  # placeholder; _try_load_image returns None for empty
+
+        cust = UnitCustomisation(
+            rank=Rank.MARSHAL,
+            display_name="Warlord",
+            image_paths=(Path("images/marshal/marshal.png"),),
+        )
+        all_ranks = {r: UnitCustomisation(rank=r, display_name=r.name.title()) for r in Rank}
+        all_ranks[Rank.MARSHAL] = cust
+        return ArmyMod(
+            mod_id="test_mod",
+            army_name="Test Army",
+            unit_customisations=all_ranks,
+            mod_directory=tmp_path,
+        )
+
+    def test_mod_red_and_blue_surfaces_are_distinct(
+        self, sprite_manager: SpriteManager, tmp_path: Path
+    ) -> None:
+        """preload_army() must produce distinct tinted surfaces for RED and BLUE."""
+        sprite_manager.preload_classic()
+        sprite_manager.preload_army(self._make_army_mod_with_images(tmp_path))  # type: ignore[union-attr]
+        red = sprite_manager.get_surface(Rank.MARSHAL, PlayerSide.RED, revealed=True)
+        blue = sprite_manager.get_surface(Rank.MARSHAL, PlayerSide.BLUE, revealed=True)
+        assert red is not blue

@@ -254,10 +254,10 @@ class _GameContext:
         # Preload piece images for the selected army mods.
         if self._sprite_manager is not None:
             self._sprite_manager.preload_classic()
-            for _mod in (player1_army, player2_army):
+            for _mod, _side in ((player1_army, PlayerSide.RED), (player2_army, PlayerSide.BLUE)):
                 if _mod is not None:
                     try:
-                        self._sprite_manager.preload_army(_mod)
+                        self._sprite_manager.preload_army(_mod, _side)
                     except Exception:  # noqa: BLE001
                         logger.warning(
                             "_GameContext: failed to preload army mod '%s'; using classic sprites.",

@@ -203,7 +203,7 @@ class SpriteManager:
     # Mod-aware preloading (custom_armies.md §5)
     # ------------------------------------------------------------------
 
-    def preload_army(self, army_mod: ArmyMod) -> None:
+    def preload_army(self, army_mod: ArmyMod, side: PlayerSide | None = None) -> None:
         """Preload images for all ranks defined in *army_mod*.
 
         For each rank the method:
@@ -218,6 +218,8 @@ class SpriteManager:
 
         Args:
             army_mod: The :class:`~src.domain.army_mod.ArmyMod` to preload.
+            side: If provided, only cache images for this ``PlayerSide``.
+                  When ``None`` (default), cache for all sides (legacy behaviour).
 
         Raises:
             PathTraversalError: If any image path in the mod attempts a
@@ -252,20 +254,21 @@ class SpriteManager:
             candidates: list[Path] = []
             if cust_opt is not None:
                 candidates = list(cust_opt.image_paths)
+            sides = [side] if side is not None else list(PlayerSide)
             if candidates and army_mod.mod_directory is not None:
                 chosen = random.choice(candidates)  # noqa: S311
                 full_path = army_mod.mod_directory / chosen
                 surface = self._try_load_image(full_path)
                 if surface is not None:
-                    # Cache the same mod surface for both sides (mod images are
-                    # not team-specific).
-                    for side in PlayerSide:
-                        self._cache[(rank, side)] = surface
+                    # Apply team tint so mod images share the same red/blue visual
+                    # identity as classic pieces (BLEND_RGB_MULT, same as _load_rank_surface).
+                    for s in sides:
+                        self._cache[(rank, s)] = self._apply_tint(surface, s)
                     continue
             # Fallback: keep whatever Classic surface is already cached.
-            for side in PlayerSide:
-                if (rank, side) not in self._cache:
-                    self._cache[(rank, side)] = self._load_rank_surface(rank, side)
+            for s in sides:
+                if (rank, s) not in self._cache:
+                    self._cache[(rank, s)] = self._load_rank_surface(rank, s)
 
     # ------------------------------------------------------------------
     # Internal helpers

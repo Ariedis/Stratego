@@ -47,8 +47,10 @@ _BOARD_ROWS: int = 10
 
 # Colour palette
 _BG_COLOUR = (20, 30, 48)
-_SELECT_COLOUR = (255, 255, 0, 128)  # yellow highlight for selected piece
-_INVALID_COLOUR = (255, 80, 80, 128)  # red tint for invalid move flash
+_SELECT_COLOUR = (255, 255, 0, 128)       # yellow highlight for selected piece
+_INVALID_COLOUR = (255, 80, 80, 128)      # red tint for invalid move flash
+_COLOUR_VALID_MOVE = (46, 204, 113, 110)  # green — valid move destination
+_COLOUR_ATTACK_TARGET = (230, 126, 34, 110)  # orange — valid attack destination
 _PANEL_COLOUR = (30, 45, 70)
 _PANEL_BORDER_COLOUR = (60, 80, 110)
 _TEXT_COLOUR = (220, 220, 220)
@@ -157,6 +159,11 @@ class PlayingScreen(Screen):
         self._blue_army_mod = blue_army_mod
 
         self._selected_pos: Position | None = None
+        self._valid_move_targets: list[Position] = []
+        self._hovered_pos: Position | None = None
+        # Position-keyed rank possibilities for unrevealed enemy pieces.
+        # Maps (row, col) → frozenset of still-possible Ranks.
+        self._enemy_rank_hints: dict[tuple[int, int], frozenset] = {}
         self._invalid_flash: float = 0.0   # seconds remaining for red flash
         self._status_message: str = ""
         self._last_move_text: str = ""       # last-move summary for side panel
@@ -221,6 +228,27 @@ class PlayingScreen(Screen):
             self._cell_h = 76
 
         self._status_message = self._active_player_label()
+        self._init_rank_hints()
+
+    def _init_rank_hints(self) -> None:
+        """Initialise rank-possibility hints for all unrevealed enemy pieces."""
+        try:
+            all_ranks: frozenset = frozenset(Rank)
+            mobile_ranks: frozenset = all_ranks - {Rank.BOMB, Rank.FLAG}
+            state = self._controller.current_state
+            self._enemy_rank_hints = {}
+            for sq in state.board.squares.values():
+                if (
+                    sq.piece is not None
+                    and sq.piece.owner != self._viewing_player
+                    and not sq.piece.revealed
+                ):
+                    key = (sq.piece.position.row, sq.piece.position.col)
+                    # Pieces already seen to move cannot be Bomb or Flag.
+                    ranks = mobile_ranks if sq.piece.has_moved else all_ranks
+                    self._enemy_rank_hints[key] = ranks
+        except Exception:  # noqa: BLE001
+            self._enemy_rank_hints = {}
 
     def on_exit(self) -> dict[str, Any]:
         """Return the final game state when leaving this screen.
@@ -263,6 +291,19 @@ class PlayingScreen(Screen):
             y = self._selected_pos.row * self._cell_h
             surface.blit(highlight, (x, y))
 
+        # Valid-move destination highlights.
+        if self._valid_move_targets and self._cell_w and self._cell_h:
+            state_for_hl: GameState = self._controller.current_state
+            move_overlay = _pygame.Surface((self._cell_w, self._cell_h), _pygame.SRCALPHA)
+            attack_overlay = _pygame.Surface((self._cell_w, self._cell_h), _pygame.SRCALPHA)
+            move_overlay.fill(_COLOUR_VALID_MOVE)
+            attack_overlay.fill(_COLOUR_ATTACK_TARGET)
+            for vpos in self._valid_move_targets:
+                sq = state_for_hl.board.get_square(vpos)
+                has_enemy = sq.piece is not None and sq.piece.owner != state_for_hl.active_player
+                overlay = attack_overlay if has_enemy else move_overlay
+                surface.blit(overlay, (vpos.col * self._cell_w, vpos.row * self._cell_h))
+
         # Invalid-move flash overlay.
         if self._invalid_flash > 0 and self._selected_pos is not None:
             flash = _pygame.Surface((self._cell_w, self._cell_h), _pygame.SRCALPHA)
@@ -273,6 +314,54 @@ class PlayingScreen(Screen):
 
         if self._font is not None and self._font_small is not None:
             self._render_panel(surface, panel_x, panel_w, h)
+
+        # Hover tooltip for unrevealed enemy pieces.
+        if (
+            self._hovered_pos is not None
+            and self._cell_w
+            and self._cell_h
+            and self._font_small is not None
+        ):
+            hover_state: GameState = self._controller.current_state
+            try:
+                hover_sq = hover_state.board.get_square(self._hovered_pos)
+            except (KeyError, Exception):
+                hover_sq = None
+            if (
+                hover_sq is not None
+                and hover_sq.piece is not None
+                and not hover_sq.piece.revealed
+                and hover_sq.piece.owner != self._viewing_player
+            ):
+                pos_key = (self._hovered_pos.row, self._hovered_pos.col)
+                possible = self._enemy_rank_hints.get(pos_key)
+                n_possible = len(possible) if possible else len(list(Rank))
+                if n_possible == 1 and possible:
+                    tip = f"Must be: {next(iter(possible)).name.title()}"
+                elif hover_sq.piece.has_moved:
+                    n_max = len(list(Rank)) - 2  # Bomb/Flag excluded once moved
+                    tip = (
+                        f"Mobile — {n_possible}/{n_max} ranks"
+                        if n_possible < n_max
+                        else "Mobile (not Bomb/Flag)"
+                    )
+                else:
+                    n_max = len(list(Rank))
+                    tip = (
+                        f"Unknown — {n_possible}/{n_max} ranks"
+                        if n_possible < n_max
+                        else "Unknown piece"
+                    )
+                tip_surf = self._font_small.render(tip, True, (255, 230, 100))
+                tip_x = self._hovered_pos.col * self._cell_w
+                tip_y = max(2, self._hovered_pos.row * self._cell_h - tip_surf.get_height() - 2)
+                # Semi-transparent background for readability.
+                bg = _pygame.Surface(
+                    (tip_surf.get_width() + 6, tip_surf.get_height() + 4), _pygame.SRCALPHA
+                )
+                bg.fill((0, 0, 0, 160))
+                surface.blit(bg, (tip_x, tip_y))
+                surface.blit(tip_surf, (tip_x + 3, tip_y + 2))
 
         # Task popup overlay — drawn on top of everything else (US-804).
         if self.popup_active and self._popup is not None:
@@ -294,6 +383,13 @@ class PlayingScreen(Screen):
 
         if event.type == _MOUSEMOTION:
             self._mouse_pos = event.pos
+            px, py = event.pos
+            if self._cell_w > 0 and self._cell_h > 0 and px < self._cell_w * _BOARD_COLS:
+                col = min(px // self._cell_w, _BOARD_COLS - 1)
+                row = min(py // self._cell_h, _BOARD_ROWS - 1)
+                self._hovered_pos = Position(row, col)
+            else:
+                self._hovered_pos = None
             return
 
         if event.type == _QUIT:
@@ -304,6 +400,7 @@ class PlayingScreen(Screen):
             if event.button == 3:
                 # Right-click deselects.
                 self._selected_pos = None
+                self._valid_move_targets = []
                 return
             if event.button == 1:
                 self._handle_left_click(event.pos)
@@ -344,6 +441,13 @@ class PlayingScreen(Screen):
     def _on_piece_moved(self, event: PieceMoved) -> None:
         """Handle a successful move — clear selection and update status."""
         self._selected_pos = None
+        self._valid_move_targets = []
+        # Track enemy piece moves: relocate hints and eliminate Bomb/Flag.
+        if event.piece.owner != self._viewing_player:
+            old_key = (event.from_pos.row, event.from_pos.col)
+            new_key = (event.to_pos.row, event.to_pos.col)
+            current = self._enemy_rank_hints.pop(old_key, frozenset(Rank))
+            self._enemy_rank_hints[new_key] = current - {Rank.BOMB, Rank.FLAG}
         owner = event.piece.owner.value.upper()
         fr = event.from_pos
         to = event.to_pos
@@ -362,6 +466,13 @@ class PlayingScreen(Screen):
         )
         self._status_message = f"Combat: {winner_str} wins!"
         self._selected_pos = None
+        self._valid_move_targets = []
+        # Combat reveals pieces — remove both combatants from rank-hint tracker.
+        for combatant in (event.attacker, event.defender):
+            if combatant.owner != self._viewing_player:
+                self._enemy_rank_hints.pop(
+                    (combatant.position.row, combatant.position.col), None
+                )
 
         # Track captured pieces for the side-panel tray.
         if event.winner == PlayerSide.RED:
@@ -382,6 +493,7 @@ class PlayingScreen(Screen):
         """Handle a turn change — update the active-player indicator."""
         self._status_message = self._active_player_label()
         self._selected_pos = None
+        self._valid_move_targets = []
 
     def _on_game_over(self, event: GameOver) -> None:
         """Handle game over — push the game over screen."""
@@ -577,10 +689,20 @@ class PlayingScreen(Screen):
             sq = state.board.get_square(clicked_pos)
             if sq.piece is not None and sq.piece.owner == state.active_player:
                 self._selected_pos = clicked_pos
+                # Compute valid destinations for highlight.
+                try:
+                    from src.domain import rules_engine
+                    all_moves = rules_engine.generate_moves(state, state.active_player)
+                    self._valid_move_targets = [
+                        m.to_pos for m in all_moves if m.from_pos == clicked_pos
+                    ]
+                except Exception:
+                    self._valid_move_targets = []
         else:
             if clicked_pos == self._selected_pos:
                 # Click same square → deselect.
                 self._selected_pos = None
+                self._valid_move_targets = []
             else:
                 # Attempt to move the selected piece.
                 from src.application.commands import MovePiece
