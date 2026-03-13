@@ -7,6 +7,8 @@ dependencies = [
     "pygame-ce>=2.4",
     "pygame-gui>=0.6",
     "pyyaml>=6.0",
+    "Pillow>=10.0",
+    "opencv-python>=4.8",
 ]
 
 [project.optional-dependencies]

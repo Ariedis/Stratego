@@ -613,7 +613,17 @@ class PlayingScreen(Screen):
                         game_mode = "VS_AI"
                         break
 
+                from src.presentation.media_loader import load_media
                 from src.presentation.overlays.task_popup_overlay import TaskPopupOverlay
+
+                # Load task image / animation frames if available
+                gif_frames: list[Any] | None = None
+                frame_duration_ms = 0.0
+                if task.image_path is not None:
+                    loaded_frames, loaded_duration = load_media(task.image_path)
+                    if loaded_frames:
+                        gif_frames = loaded_frames
+                        frame_duration_ms = loaded_duration
 
                 self._popup = TaskPopupOverlay(
                     surface=surface,
@@ -623,6 +633,8 @@ class PlayingScreen(Screen):
                     captured_unit_name=captured_unit_name,
                     captured_player_side=captured_side,
                     game_mode=game_mode,
+                    gif_frames=gif_frames,
+                    frame_duration_ms=frame_duration_ms,
                     on_dismiss=self.dismiss_popup,
                 )
 

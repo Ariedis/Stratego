@@ -33,9 +33,9 @@ _DISPLAY_NAME_MAX = 32
 _TASK_DESCRIPTION_MIN = 1
 _TASK_DESCRIPTION_MAX = 120
 
-# Supported task image extensions (US-802).
+# Supported task image/video extensions (US-802).
 _SUPPORTED_TASK_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".mp4", ".webm"}
 )
 
 
