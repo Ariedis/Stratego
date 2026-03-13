@@ -272,8 +272,9 @@ class ArmySelectScreen(Screen):
                 current_army = self._player2_army_mod
                 selector_name = "Player 2" if self._game_mode == "TWO_PLAYER" else "AI"
             
+            army_label = current_army.army_name if current_army else _CLASSIC_ARMY_NAME
             army_name = self._font_medium.render(
-                f"{selector_name}: {current_army.army_name if current_army else _CLASSIC_ARMY_NAME}", True, _TITLE_COLOUR
+                f"{selector_name}: {army_label}", True, _TITLE_COLOUR
             )
             surface.blit(army_name, (preview_rect.x + 16, preview_rect.y + 16))
             
@@ -294,7 +295,8 @@ class ArmySelectScreen(Screen):
             # Custom army hint
             if len(self._available_armies) > 1:
                 hint = self._font_small.render(
-                    f"Tab to switch selector, arrow keys to cycle through {len(self._available_armies)} armies.",
+                    f"Tab to switch selector, arrow keys to cycle through"
+                    f" {len(self._available_armies)} armies.",
                     True, _TEXT_SECONDARY,
                 )
             else:
@@ -340,7 +342,7 @@ class ArmySelectScreen(Screen):
         if event.type == _pygame.KEYDOWN:
             if event.key == _pygame.K_TAB:
                 # Switch active selector
-                num_selectors = 2 if self._game_mode == "TWO_PLAYER" else 2  # Always 2 in current implementation
+                num_selectors = 2  # Always 2 in current implementation
                 self._active_selector = (self._active_selector + 1) % num_selectors
             elif event.key == _pygame.K_LEFT or event.key == _pygame.K_UP:
                 self._cycle_army(-1)

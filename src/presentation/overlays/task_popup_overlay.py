@@ -280,7 +280,7 @@ class TaskPopupOverlay:
             self._font_body = load_font(_pygame.font, 16)
             self._font_small = load_font(_pygame.font, 13)
             self._font_btn = load_font(_pygame.font, 18, bold=True)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
 
     def _compute_handover_content(
@@ -695,7 +695,11 @@ class TaskPopupOverlay:
             txt_col_y += inst_surf.get_height() + 6
 
         # Handover prompt (2-player mode, US-809)
-        if self._show_handover_prompt and self._handover_prompt_text and self._font_small is not None:
+        if (
+            self._show_handover_prompt
+            and self._handover_prompt_text
+            and self._font_small is not None
+        ):
             hp_surf = self._font_small.render(
                 self._handover_prompt_text, True, COLOUR_TEXT_SECONDARY
             )

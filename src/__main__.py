@@ -260,7 +260,8 @@ class _GameContext:
                         self._sprite_manager.preload_army(_mod, _side)
                     except Exception:  # noqa: BLE001
                         logger.warning(
-                            "_GameContext: failed to preload army mod '%s'; using classic sprites.",
+                            "_GameContext: failed to preload army mod '%s';"
+                            " using classic sprites.",
                             getattr(_mod, 'mod_id', _mod),
                         )
 
