@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from math import inf
+from typing import Any
 
 from src.domain.enums import GamePhase, PlayerSide
 from src.domain.game_state import GameState
@@ -23,7 +24,7 @@ def _other_side(side: PlayerSide) -> PlayerSide:
 _TT_MAX_SIZE: int = 200_000  # Maximum transposition-table entries before clearing.
 
 
-def _board_key(state: GameState) -> tuple:
+def _board_key(state: GameState) -> tuple[Any, PlayerSide]:
     """Return a compact, history-independent hash key for transposition-table lookup.
 
     Encodes only the board piece layout and active player — ignoring move history
@@ -48,7 +49,7 @@ def _alpha_beta(
     maximising: bool,
     deadline: float | None,
     use_move_ordering: bool,
-    _tt: dict,
+    _tt: dict[tuple[Any, PlayerSide], tuple[float, int, str]],
 ) -> float:
     """Recursive alpha-beta helper. Returns a heuristic score."""
     from src.ai.evaluation import evaluate, order_moves
@@ -140,7 +141,7 @@ def minimax(
     beta: float = inf,
     deadline: float | None = None,
     use_move_ordering: bool = True,
-    _tt: dict | None = None,
+    _tt: dict[tuple[Any, PlayerSide], tuple[float, int, str]] | None = None,
 ) -> Move | None:
     """Return the best Move for *ai_side* in *state* using minimax with alpha-beta pruning.
 
@@ -216,7 +217,7 @@ def best_move(
         return None
 
     result: Move | None = None
-    _tt: dict = {}  # Shared TT across all iterative-deepening depths.
+    _tt: dict[tuple[Any, PlayerSide], tuple[float, int, str]] = {}  # Shared TT across all iterative-deepening depths.
 
     for depth in range(1, max_depth + 1):
         if time.monotonic() > deadline:

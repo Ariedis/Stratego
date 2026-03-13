@@ -163,7 +163,7 @@ class PlayingScreen(Screen):
         self._hovered_pos: Position | None = None
         # Position-keyed rank possibilities for unrevealed enemy pieces.
         # Maps (row, col) → frozenset of still-possible Ranks.
-        self._enemy_rank_hints: dict[tuple[int, int], frozenset] = {}
+        self._enemy_rank_hints: dict[tuple[int, int], frozenset[Rank]] = {}
         self._invalid_flash: float = 0.0   # seconds remaining for red flash
         self._status_message: str = ""
         self._last_move_text: str = ""       # last-move summary for side panel
@@ -233,8 +233,8 @@ class PlayingScreen(Screen):
     def _init_rank_hints(self) -> None:
         """Initialise rank-possibility hints for all unrevealed enemy pieces."""
         try:
-            all_ranks: frozenset = frozenset(Rank)
-            mobile_ranks: frozenset = all_ranks - {Rank.BOMB, Rank.FLAG}
+            all_ranks: frozenset[Rank] = frozenset(Rank)
+            mobile_ranks: frozenset[Rank] = all_ranks - {Rank.BOMB, Rank.FLAG}
             state = self._controller.current_state
             self._enemy_rank_hints = {}
             for sq in state.board.squares.values():
